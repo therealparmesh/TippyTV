@@ -95,7 +95,9 @@ public final class MainActivity extends ComponentActivity {
     private volatile long catalogGeneration;
     private FrameLayout root, video, inset;
     private PlayerView mainSurface, insetSurface;
-    private LinearLayout shell, stage, watchBar;
+    private LinearLayout shell, stage;
+    private HorizontalScrollView watchOverlay;
+    private int revealKey = KeyEvent.KEYCODE_UNKNOWN;
     private TextView count, empty, selectedName, programText, mainMessage, insetMessage, watchTitle, watchStatus;
     private Button filterButton, queryButton, jumpButton, guideButton, watchButton, insetButton, swapButton, closeInset, starButton;
     private Button watchSwap, watchClose, watchRetry;
@@ -111,6 +113,12 @@ public final class MainActivity extends ComponentActivity {
     private LinearLayoutManager rows;
     private ChannelAdapter adapter;
 
+    private final Runnable hideWatchControls = () -> {
+        if (!fullscreen || !foreground || player == null || !player.primaryStatus().live()
+                || player.secondaryStatus().failed() || !hasWindowFocus()) return;
+        video.requestFocus();
+        watchOverlay.setVisibility(View.GONE);
+    };
     private final Runnable guideRefresh = this::visibleGuide;
     private final Runnable minute = new Runnable() {
         @Override public void run() {
@@ -358,8 +366,16 @@ public final class MainActivity extends ComponentActivity {
         stage = vertical();
         LinearLayout.LayoutParams stageSize = new LinearLayout.LayoutParams(0, -1, .58f);
         stageSize.leftMargin = dp(12); body.addView(stage, stageSize);
-        video = new FrameLayout(this);
+        video = new FrameLayout(this) {
+            @Override public boolean dispatchKeyEvent(KeyEvent event) {
+                return handleWatchKey(event) || super.dispatchKeyEvent(event);
+            }
+        };
         video.setBackground(box(0xff171719, 0, 12));
+        video.setOnClickListener(view -> {
+            if (fullscreen) showWatchControls();
+        });
+        video.setFocusable(false);
         stage.addView(video, new LinearLayout.LayoutParams(-1, 0, 1));
         mainSurface = new PlayerView(this); mainSurface.setUseController(false);
         mainSurface.setFocusable(false); mainSurface.setKeepContentOnPlayerReset(false);
@@ -420,7 +436,7 @@ public final class MainActivity extends ComponentActivity {
             stage.setLayoutParams(size);
         });
 
-        watchBar = new LinearLayout(this); watchBar.setGravity(Gravity.CENTER_VERTICAL);
+        LinearLayout watchBar = new LinearLayout(this); watchBar.setGravity(Gravity.CENTER_VERTICAL);
         watchBar.setBackgroundColor(0xdf2b2b2b); watchBar.setPadding(dp(12), 0, dp(8), 0);
         watchTitle = text("", 16, TEXT); watchTitle.setSingleLine(); watchTitle.setEllipsize(TextUtils.TruncateAt.END);
         watchBar.addView(watchTitle, new LinearLayout.LayoutParams(0, -2, 1));
@@ -437,8 +453,9 @@ public final class MainActivity extends ComponentActivity {
         watchSwap = button(R.string.swap, () -> player.swap()); addButton(watchBar, watchSwap);
         watchClose = button(R.string.close_inset, () -> closeInset(returnToChannels)); addButton(watchBar, watchClose);
         FrameLayout.LayoutParams bottom = new FrameLayout.LayoutParams(-1, dp(54), Gravity.BOTTOM);
-        video.addView(scrollBar(watchBar), bottom);
-        watchBar.setVisibility(View.GONE);
+        watchOverlay = scrollBar(watchBar);
+        video.addView(watchOverlay, bottom);
+        watchOverlay.setVisibility(View.GONE);
 
         player = new Playback(this, mainSurface, insetSurface, this::updatePlayback);
         showScreen(root);
@@ -749,6 +766,23 @@ public final class MainActivity extends ComponentActivity {
         watchClose.setVisibility(small == null ? View.GONE : View.VISIBLE);
         root.setKeepScreenOn(foreground && player.hasVideo());
         updateSelection();
+        if (fullscreen) {
+            if (status.failed() || smallStatus.failed()) showWatchControls();
+            else scheduleWatchControls();
+        }
+    }
+
+    private void scheduleWatchControls() {
+        ui.removeCallbacks(hideWatchControls);
+        if (fullscreen && foreground && watchOverlay.isShown()) ui.postDelayed(hideWatchControls, 5_000);
+    }
+
+    private void showWatchControls() {
+        if (!fullscreen) return;
+        boolean hidden = watchOverlay.getVisibility() != View.VISIBLE;
+        watchOverlay.setVisibility(View.VISIBLE);
+        if (hidden || video.isFocused()) returnToChannels.requestFocus();
+        scheduleWatchControls();
     }
 
     private void closeInset(Button fallback) {
@@ -759,16 +793,19 @@ public final class MainActivity extends ComponentActivity {
     private void setFullscreen(boolean enabled) {
         if (fullscreen == enabled || video == null) return;
         fullscreen = enabled;
+        video.setFocusable(enabled);
+        revealKey = KeyEvent.KEYCODE_UNKNOWN;
+        ui.removeCallbacks(hideWatchControls);
         ViewGroup previous = (ViewGroup) video.getParent();
         if (enabled) {
             previous.removeView(video); shell.setVisibility(View.GONE);
             root.addView(video, new FrameLayout.LayoutParams(-1, -1));
-            watchBar.setVisibility(View.VISIBLE);
+            showWatchControls();
             returnToChannels.requestFocus();
         } else {
             root.removeView(video);
             stage.addView(video, 0, new LinearLayout.LayoutParams(-1, 0, 1));
-            shell.setVisibility(View.VISIBLE); watchBar.setVisibility(View.GONE);
+            shell.setVisibility(View.VISIBLE); watchOverlay.setVisibility(View.GONE);
             returnToSelectedChannel();
         }
         FrameLayout.LayoutParams p = (FrameLayout.LayoutParams) inset.getLayoutParams();
@@ -1039,6 +1076,7 @@ public final class MainActivity extends ComponentActivity {
 
     @Override protected void onStop() {
         foreground = false; ui.removeCallbacks(minute); ui.removeCallbacks(guideRefresh);
+        ui.removeCallbacks(hideWatchControls);
         if (player != null) {
             resumeMain = player.primary(); resumeInset = player.secondary();
             player.stopAll();
@@ -1048,10 +1086,37 @@ public final class MainActivity extends ComponentActivity {
 
     @Override protected void onDestroy() {
         destroyed = true; ++catalogGeneration; ++visibleGeneration;
+        ui.removeCallbacks(hideWatchControls);
         if (signIn != null) signIn.cancel();
         if (player != null) player.destroy(null);
         accounts.shutdownNow(); catalog.shutdownNow(); search.shutdownNow(); guide.shutdownNow();
         super.onDestroy();
+    }
+
+    private boolean handleWatchKey(KeyEvent event) {
+        int key = event.getKeyCode();
+        if (key == revealKey) {
+            if (event.getAction() == KeyEvent.ACTION_UP) revealKey = KeyEvent.KEYCODE_UNKNOWN;
+            return true;
+        }
+        if (fullscreen && event.getAction() == KeyEvent.ACTION_DOWN) {
+            boolean navigation = key == KeyEvent.KEYCODE_DPAD_CENTER || key == KeyEvent.KEYCODE_ENTER
+                    || key == KeyEvent.KEYCODE_DPAD_UP || key == KeyEvent.KEYCODE_DPAD_DOWN
+                    || key == KeyEvent.KEYCODE_DPAD_LEFT || key == KeyEvent.KEYCODE_DPAD_RIGHT;
+            if (navigation && watchOverlay.getVisibility() != View.VISIBLE) {
+                revealKey = key;
+                showWatchControls();
+                return true;
+            }
+            scheduleWatchControls();
+        }
+        return false;
+    }
+
+    @Override public void onWindowFocusChanged(boolean focused) {
+        super.onWindowFocusChanged(focused);
+        if (focused) scheduleWatchControls();
+        else ui.removeCallbacks(hideWatchControls);
     }
 
     @Override public boolean onKeyDown(int key, KeyEvent event) {
