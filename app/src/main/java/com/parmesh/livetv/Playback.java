@@ -17,6 +17,7 @@ import androidx.media3.exoplayer.DefaultRenderersFactory;
 import androidx.media3.exoplayer.ExoPlayer;
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory;
 import androidx.media3.ui.PlayerView;
+import java.util.List;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
@@ -249,6 +250,21 @@ final class Playback {
 
     void stopInset() { stop(secondary); changed.run(); }
     void stopAll() { stop(primary); stop(secondary); changed.run(); }
+
+    void reconcileChannels(List<Channels.Channel> channels) {
+        if (primary.channel == null && secondary.channel == null) return;
+        reconcile(primary, channels);
+        reconcile(secondary, channels);
+        if (primary.channel == null && secondary.channel != null) swap();
+        else changed.run();
+    }
+
+    private void reconcile(Slot slot, List<Channels.Channel> channels) {
+        if (slot.channel == null) return;
+        int position = Channels.indexOf(channels, slot.channel.id());
+        if (position < 0) stop(slot);
+        else slot.channel = channels.get(position);
+    }
 
     void destroy() {
         stopAll();

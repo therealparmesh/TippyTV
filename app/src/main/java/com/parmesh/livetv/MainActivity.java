@@ -58,7 +58,9 @@ public final class MainActivity extends ComponentActivity {
     private final ExecutorService search = Executors.newSingleThreadExecutor();
     private final ExecutorService guide = Executors.newSingleThreadExecutor();
     private final GuideCache epg = new GuideCache(384);
-    private final Map<String, Boolean> favoriteOverrides = new HashMap<>();
+    private record FavoriteEdit(boolean value, long revision) {}
+    private final Map<String, FavoriteEdit> favoriteOverrides = new HashMap<>();
+    private long favoriteRevision;
     private final Set<String> pendingFavorites = new HashSet<>();
     private final DateFormat clock = DateFormat.getTimeInstance(DateFormat.SHORT);
     private SessionStore store;
@@ -73,7 +75,7 @@ public final class MainActivity extends ComponentActivity {
     private String loadProblem;
     private boolean favoritesOnly, catalogBusy, guideBusy, fullscreen, foreground, destroyed;
     private volatile int visibleGeneration;
-    private int expectedCount, offset, focusedPosition;
+    private int expectedCount, focusedPosition;
     private boolean resetSelection;
     private String pendingJump;
     private long guideWindow = Long.MIN_VALUE;
@@ -360,25 +362,20 @@ public final class MainActivity extends ComponentActivity {
         queryButton.requestFocusFromTouch();
         updateSelection();
         updatePlayback();
-        loadCatalog(true);
+        loadCatalog();
     }
 
-    private void loadCatalog(boolean reset) {
+    private void loadCatalog() {
         if (api == null || catalogBusy) return;
         Jellyfin server = api;
         long generation = ++catalogGeneration;
-        int start = reset ? 0 : offset;
-        List<Channels.Channel> previous = reset ? List.of() : all;
+        long favoriteBaseline = favoriteRevision;
+        boolean replace = !all.isEmpty();
         catalogBusy = true; loadProblem = null;
-        if (reset) {
-            all = List.of(); offset = 0; expectedCount = 0; rebuildFavorites(); renderFilter(false);
-        }
         updateCount();
         catalog.execute(() -> {
             var accumulated = new LinkedHashMap<String, Channels.Channel>();
-            for (Channels.Channel c : previous) accumulated.put(c.id(), c);
-            int cursor = start, total = -1, pages = 0;
-            String error = null;
+            int cursor = 0, total = -1, pages = 0;
             try {
                 while (catalogGeneration == generation) {
                     Jellyfin.Page page = server.channels(cursor, PAGE);
@@ -391,35 +388,56 @@ public final class MainActivity extends ComponentActivity {
                     if (!done && accumulated.size() == priorSize && page.consumed() > 0) {
                         throw new java.io.IOException("Channel paging did not advance.");
                     }
-                    if (done || pages++ % 3 == 0) publishCatalog(server, generation, accumulated, cursor, total, done, null);
+                    if (done || (!replace && pages++ % 3 == 0)) {
+                        publishCatalog(server, generation, favoriteBaseline, accumulated, total, done, null);
+                    }
                     if (done) return;
                 }
                 return;
             } catch (Exception failure) {
-                error = failure instanceof Jellyfin.HttpFailure http && http.status == 403
+                String error = failure instanceof Jellyfin.HttpFailure http && http.status == 403
                         ? "This account cannot access Live TV."
-                        : failure instanceof Jellyfin.HttpFailure http && http.status == 401
-                        ? "Sign-in expired. Open Server to reconnect."
                         : "Could not load channels. Open Server to retry.";
+                if (replace) {
+                    ui.post(() -> {
+                        if (destroyed || api != server || catalogGeneration != generation) return;
+                        catalogBusy = false;
+                        loadProblem = error;
+                        updateCount();
+                        toast(loadProblem);
+                    });
+                } else publishCatalog(server, generation, favoriteBaseline, accumulated, total, true, error);
             }
-            publishCatalog(server, generation, accumulated, cursor, total, true, error);
         });
     }
 
-    private void publishCatalog(Jellyfin server, long generation, Map<String, Channels.Channel> channels,
-                                int cursor, int total, boolean done, String error) {
+    private void publishCatalog(Jellyfin server, long generation, long favoriteBaseline, Map<String, Channels.Channel> channels,
+                                int total, boolean done, String error) {
         List<Channels.Channel> snapshot = List.copyOf(channels.values());
         ui.post(() -> {
             if (destroyed || api != server || catalogGeneration != generation) return;
-            all = snapshot; offset = cursor; expectedCount = total;
+            all = snapshot; expectedCount = total;
             catalogBusy = !done; loadProblem = error;
+            if (done && error == null) {
+                favoriteOverrides.values().removeIf(edit -> edit.revision() <= favoriteBaseline);
+                player.reconcileChannels(snapshot);
+                if (resumeMain != null && Channels.indexOf(snapshot, resumeMain.id()) < 0) {
+                    resumeMain = resumeInset;
+                    resumeInset = null;
+                }
+                if (resumeMain != null && Channels.indexOf(snapshot, resumeMain.id()) < 0) resumeMain = null;
+                if (resumeInset != null && Channels.indexOf(snapshot, resumeInset.id()) < 0) resumeInset = null;
+            }
             rebuildFavorites(); renderFilter(false);
         });
     }
 
     private void rebuildFavorites() {
         HashSet<String> set = new HashSet<>();
-        for (Channels.Channel c : all) if (favoriteOverrides.getOrDefault(c.id(), c.favorite())) set.add(c.id());
+        for (Channels.Channel c : all) {
+            FavoriteEdit edit = favoriteOverrides.get(c.id());
+            if (edit == null ? c.favorite() : edit.value()) set.add(c.id());
+        }
         favorites = Set.copyOf(set);
     }
 
@@ -551,7 +569,8 @@ public final class MainActivity extends ComponentActivity {
                 if (destroyed || api != server) return;
                 pendingFavorites.remove(channel.id());
                 if (saved) {
-                    favoriteOverrides.put(channel.id(), value); rebuildFavorites();
+                    favoriteOverrides.put(channel.id(), new FavoriteEdit(value, ++favoriteRevision));
+                    rebuildFavorites();
                     if (favoritesOnly) renderFilter(false);
                     else refreshGuideRows();
                 } else toast("Could not update favorite.");
@@ -783,7 +802,7 @@ public final class MainActivity extends ComponentActivity {
                     ++guideGeneration;
                     epg.clear(); noGuideUntil = guideCheckedUntil = guideBackoffUntil = 0;
                     refreshGuideRows(); scheduleGuide();
-                    loadCatalog(offset == 0 || loadProblem == null);
+                    loadCatalog();
                 })
                 .setNeutralButton("Disconnect", (d, w) -> disconnect())
                 .setNegativeButton("Close", null).show();
@@ -796,6 +815,7 @@ public final class MainActivity extends ComponentActivity {
         all = List.of(); favorites = Set.of(); favoriteOverrides.clear(); pendingFavorites.clear();
         pendingJump = null; focusedPosition = 0; resetSelection = false;
         query = ""; favoritesOnly = false; fullscreen = false; catalogBusy = false; guideBusy = false;
+        expectedCount = 0;
         ++guideGeneration;
         noGuideUntil = guideCheckedUntil = guideBackoffUntil = 0;
         epg.clear(); store.clear(); showLogin("");
