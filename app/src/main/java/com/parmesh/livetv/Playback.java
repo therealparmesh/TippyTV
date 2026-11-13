@@ -20,10 +20,10 @@ import androidx.media3.ui.PlayerView;
 import java.util.List;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.atomic.AtomicInteger;
 
 @OptIn(markerClass = UnstableApi.class)
 final class Playback {
-    private static final ExecutorService CLEANUP = Executors.newFixedThreadPool(2);
     private final Handler ui = new Handler(Looper.getMainLooper());
     private final Context context;
     private final PlayerView mainView;
@@ -119,7 +119,7 @@ final class Playback {
             }
             ui.post(() -> {
                 if (slot.generation != generation) {
-                    CLEANUP.execute(() -> api.close(opened));
+                    slot.tuner.execute(() -> api.close(opened));
                     return;
                 }
                 try {
@@ -266,10 +266,22 @@ final class Playback {
         else slot.channel = channels.get(position);
     }
 
-    void destroy() {
+    void destroy(Runnable afterClose) {
         stopAll();
-        primary.tuner.shutdown();
-        secondary.tuner.shutdown();
-        // Do not remove posted stream handoffs: stale handoffs close their own tuner lease.
+        AtomicInteger remaining = new AtomicInteger(2);
+        Runnable closed = () -> {
+            if (remaining.decrementAndGet() == 0 && afterClose != null) afterClose.run();
+        };
+        closeTuner(primary, closed);
+        closeTuner(secondary, closed);
+    }
+
+    private void closeTuner(Slot slot, Runnable closed) {
+        // A finished open can already have posted its stream handoff to the UI.
+        // Give that handoff time to queue its release before shutting down the tuner.
+        slot.tuner.execute(() -> ui.post(() -> {
+            slot.tuner.execute(closed);
+            slot.tuner.shutdown();
+        }));
     }
 }

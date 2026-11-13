@@ -130,6 +130,10 @@ final class Jellyfin {
                 .addPathSegment(channel).build(), value ? "POST" : "DELETE", null);
     }
 
+    void logout() throws IOException {
+        request(url("Sessions/Logout").build(), "POST", null);
+    }
+
     boolean hasGuide(long time, int hours) throws IOException {
         JSONObject result = request(url("LiveTv/Programs").addQueryParameter("userId", session.user)
                 .addQueryParameter("minEndDate", Instant.ofEpochMilli(time).toString())

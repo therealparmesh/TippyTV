@@ -73,7 +73,7 @@ public final class MainActivity extends ComponentActivity {
     private Channels.Channel resumeMain, resumeInset;
     private String query = "";
     private String loadProblem;
-    private boolean favoritesOnly, catalogBusy, guideBusy, fullscreen, foreground, destroyed;
+    private boolean favoritesOnly, catalogBusy, guideBusy, fullscreen, foreground, destroyed, signingOut;
     private volatile int visibleGeneration;
     private int expectedCount, focusedPosition;
     private boolean resetSelection;
@@ -181,6 +181,7 @@ public final class MainActivity extends ComponentActivity {
         card.addView(address); card.addView(username); card.addView(password);
         TextView feedback = text(message, 13, ACCENT);
         Button login = button("Connect", null);
+        login.setEnabled(!signingOut);
         LinearLayout.LayoutParams loginSize = new LinearLayout.LayoutParams(-1, dp(42));
         loginSize.topMargin = dp(7); card.addView(login, loginSize);
         card.addView(feedback);
@@ -395,12 +396,14 @@ public final class MainActivity extends ComponentActivity {
                 }
                 return;
             } catch (Exception failure) {
+                boolean expired = failure instanceof Jellyfin.HttpFailure http && http.status == 401;
                 String error = failure instanceof Jellyfin.HttpFailure http && http.status == 403
                         ? "This account cannot access Live TV."
                         : "Could not load channels. Open Server to retry.";
-                if (replace) {
+                if (expired || replace) {
                     ui.post(() -> {
                         if (destroyed || api != server || catalogGeneration != generation) return;
+                        if (expired) { signOut(false); return; }
                         catalogBusy = false;
                         loadProblem = error;
                         updateCount();
@@ -804,13 +807,30 @@ public final class MainActivity extends ComponentActivity {
                     refreshGuideRows(); scheduleGuide();
                     loadCatalog();
                 })
-                .setNeutralButton("Disconnect", (d, w) -> disconnect())
+                .setNeutralButton("Sign out", (d, w) -> signOut(true))
                 .setNegativeButton("Close", null).show();
     }
 
-    private void disconnect() {
+    private void signOut(boolean revoke) {
         ++catalogGeneration; ++visibleGeneration;
-        player.destroy(); player = null;
+        Jellyfin server = api;
+        signingOut = revoke;
+        player.destroy(revoke ? () -> {
+            String message;
+            try {
+                server.logout();
+                message = "Signed out.";
+            } catch (java.io.IOException failure) {
+                message = failure instanceof Jellyfin.HttpFailure http && http.status == 401 ? "Signed out."
+                        : "Signed out here. Could not end the server session.";
+            }
+            String result = message;
+            ui.post(() -> {
+                signingOut = false;
+                if (!destroyed && api == null) showLogin(result);
+            });
+        } : null);
+        player = null;
         api = null; selected = null; resumeMain = null; resumeInset = null;
         all = List.of(); favorites = Set.of(); favoriteOverrides.clear(); pendingFavorites.clear();
         pendingJump = null; focusedPosition = 0; resetSelection = false;
@@ -818,7 +838,8 @@ public final class MainActivity extends ComponentActivity {
         expectedCount = 0;
         ++guideGeneration;
         noGuideUntil = guideCheckedUntil = guideBackoffUntil = 0;
-        epg.clear(); store.clear(); showLogin("");
+        epg.clear(); store.clear();
+        showLogin(revoke ? "Signing out…" : "Sign-in expired. Connect again.");
     }
 
     private void toast(String message) { Toast.makeText(this, message, Toast.LENGTH_SHORT).show(); }
@@ -845,7 +866,7 @@ public final class MainActivity extends ComponentActivity {
 
     @Override protected void onDestroy() {
         destroyed = true; ++catalogGeneration; ++visibleGeneration;
-        if (player != null) player.destroy();
+        if (player != null) player.destroy(null);
         accounts.shutdownNow(); catalog.shutdownNow(); search.shutdownNow(); guide.shutdownNow();
         super.onDestroy();
     }
