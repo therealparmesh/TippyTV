@@ -259,6 +259,7 @@ public final class MainActivity extends ComponentActivity {
         list = new RecyclerView(this); list.setId(View.generateViewId());
         list.setDescendantFocusability(ViewGroup.FOCUS_AFTER_DESCENDANTS);
         list.setHasFixedSize(true); list.setItemAnimator(null);
+        list.setPreserveFocusAfterLayout(false);
         rows = new LinearLayoutManager(this) {
             @Override public void onLayoutCompleted(RecyclerView.State state) {
                 super.onLayoutCompleted(state);
@@ -496,6 +497,9 @@ public final class MainActivity extends ComponentActivity {
         focusedPosition = index;
         selected = adapter.getCurrentList().get(index);
         updateSelection();
+        // Park focus outside the recycled rows until the target has been laid out.
+        // Otherwise RecyclerView can scroll the previously focused row back into view.
+        if (list.hasFocus()) queryButton.requestFocus();
         pendingJump = index;
         rows.scrollToPositionWithOffset(index, 0);
         scheduleGuide();
