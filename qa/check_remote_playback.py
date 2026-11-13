@@ -112,6 +112,7 @@ streams(1)
 time.sleep(4)
 key(20)
 focused('2  Blue Two')
+assert any(node.get('text') == 'Watching · 1  Amber One' for node in nodes()), 'Preview identifies the selected channel instead of the playing channel'
 key(82)
 focused('Play channel')
 key(20)

@@ -89,6 +89,7 @@
     <string name="stream_failed">This stream stopped. Try again.</string>
     <string name="inset_failed">Could not play a second stream on this TV.</string>
     <string name="playback_message">%1$s\n%2$s</string>
+    <string name="watching_channel">Watching · %1$s</string>
     <string name="watch_title">%1$s  ·  Inset: %2$s</string>
     <plurals name="channel_count">
         <item quantity="one">%d channel</item>

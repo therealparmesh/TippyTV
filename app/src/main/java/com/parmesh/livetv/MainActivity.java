@@ -98,7 +98,7 @@ public final class MainActivity extends ComponentActivity {
     private LinearLayout shell, stage, emptyState, pager;
     private HorizontalScrollView watchOverlay;
     private int revealKey = KeyEvent.KEYCODE_UNKNOWN;
-    private TextView count, empty, selectedName, programText, mainMessage, insetMessage, watchTitle, watchStatus;
+    private TextView count, empty, selectedName, programText, mainMessage, insetMessage, watchTitle, watchStatus, previewLabel;
     private Button filterButton, queryButton, jumpButton, guideButton, watchButton, insetButton, swapButton, closeInset, starButton;
     private Button watchSwap, watchClose, watchRetry;
     private Button returnToChannels, emptyAction;
@@ -397,6 +397,14 @@ public final class MainActivity extends ComponentActivity {
         mainMessage.setGravity(Gravity.CENTER);
         mainMessage.setPadding(dp(22), dp(12), dp(22), dp(12));
         video.addView(mainMessage, new FrameLayout.LayoutParams(-1, -1));
+        previewLabel = text("", 14, TEXT);
+        previewLabel.setSingleLine();
+        previewLabel.setEllipsize(TextUtils.TruncateAt.END);
+        previewLabel.setBackground(box(0xcc171719, 0, 5));
+        previewLabel.setPadding(dp(10), dp(6), dp(10), dp(6));
+        FrameLayout.LayoutParams previewCaption = new FrameLayout.LayoutParams(-2, -2, Gravity.TOP | Gravity.START);
+        previewCaption.setMargins(dp(12), dp(12), dp(12), 0);
+        video.addView(previewLabel, previewCaption);
         inset = new FrameLayout(this); inset.setBackground(box(0xff171719, ACCENT, 0));
         inset.setContentDescription(getString(R.string.muted_inset));
         inset.setPadding(dp(2), dp(2), dp(2), dp(2));
@@ -702,6 +710,10 @@ public final class MainActivity extends ComponentActivity {
         if (guideButton.hasFocus() && selected == null) queryButton.requestFocusFromTouch();
         guideButton.setEnabled(selected != null);
         boolean tuned = isPlayingSelection();
+        Channels.Channel playing = player.primary();
+        previewLabel.setText(playing == null ? "" : getString(R.string.watching_channel, playing.label()));
+        previewLabel.setVisibility(!fullscreen && !tuned && playing != null && player.primaryStatus().live()
+                ? View.VISIBLE : View.GONE);
         watchButton.setText(!tuned ? R.string.play_channel : player.primaryStatus().failed() ? R.string.retry : R.string.full_screen);
         watchButton.setEnabled(selected != null);
         insetButton.setVisibility(player.primary() == null ? View.GONE : View.VISIBLE);
@@ -832,6 +844,7 @@ public final class MainActivity extends ComponentActivity {
         }
         FrameLayout.LayoutParams p = (FrameLayout.LayoutParams) inset.getLayoutParams();
         p.bottomMargin = dp(fullscreen ? 64 : 12); inset.setLayoutParams(p);
+        updateSelection();
         scheduleGuide();
     }
 
