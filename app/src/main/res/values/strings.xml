@@ -83,6 +83,8 @@
     <string name="buffering">Buffering…</string>
     <string name="live">Live</string>
     <string name="live_compatible">Live · Compatible stream</string>
+    <string name="live_compatible_short">Live · Compatible</string>
+    <string name="unavailable">Unavailable</string>
     <string name="tune_failed">Could not open this channel. Try again.</string>
     <string name="stream_failed">This stream stopped. Try again.</string>
     <string name="inset_failed">Could not play a second stream on this TV.</string>

@@ -427,7 +427,7 @@ public final class MainActivity extends ComponentActivity {
         watchStatus = text("", 14, DIM);
         watchStatus.setSingleLine();
         watchStatus.setEllipsize(TextUtils.TruncateAt.END);
-        watchStatus.setMaxWidth(dp(145));
+        watchStatus.setMaxWidth(dp(155));
         watchStatus.setPadding(dp(8), 0, dp(12), 0);
         watchBar.addView(watchStatus);
         returnToChannels = button(R.string.channels, () -> setFullscreen(false));
@@ -739,7 +739,8 @@ public final class MainActivity extends ComponentActivity {
         insetMessage.setVisibility(smallStatus.live() ? View.GONE : View.VISIBLE);
         watchTitle.setText(main == null ? "" : small == null ? main.label()
                 : getString(R.string.watch_title, main.label(), small.label()));
-        watchStatus.setText(main == null ? "" : getString(status.label));
+        watchStatus.setText(main == null ? "" : getString(status.failed() ? R.string.unavailable
+                : status == Playback.Status.LIVE_COMPATIBLE ? R.string.live_compatible_short : status.label));
         if (!status.failed() && watchRetry.hasFocus()) returnToChannels.requestFocus();
         watchRetry.setVisibility(status.failed() ? View.VISIBLE : View.GONE);
         swapButton.setVisibility(small == null ? View.GONE : View.VISIBLE);
