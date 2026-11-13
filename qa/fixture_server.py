@@ -8,7 +8,7 @@ ORIGIN=os.environ.get('JELLYFIN_QA_ORIGIN','http://10.0.2.2:18798')
 PORT=int(os.environ.get('JELLYFIN_QA_PORT','18798'))
 start=time.time()
 state={'open':{},'opened':0,'closed':0,'guide':0,'favorites':set(),'writes':0,
-       'tokens':set(),'logins':0,'logouts':0,'open_at_logout':None,'replacement':False}
+       'tokens':set(),'logins':0,'logouts':0,'open_at_logout':None,'replacement':False,'guide_failure':False}
 quick_connect={}
 lock=threading.Lock()
 channels=[{'Id':'a','Name':'Amber One','ChannelNumber':'1'},{'Id':'b','Name':'Blue Two','ChannelNumber':'2'}]
@@ -43,7 +43,10 @@ class Handler(BaseHTTPRequestHandler):
                 rows=[{**x,'UserData':{'IsFavorite':x['Id'] in state['favorites']}} for x in lineup[index:index+count]]
             return self.result(200,{'Items':rows,'TotalRecordCount':len(lineup)}) if valid else self.result(401)
         if path=='/LiveTv/Programs':
-            with lock:state['guide']+=1
+            with lock:
+                state['guide']+=1
+                failure=state['guide_failure']
+            if failure:return self.result(503,{})
             ids=q.get('channelIds',['a,b'])[0].split(',')
             now=time.time();begin=(int(now)//1800)*1800
             first=timestamp(q,'minEndDate',float('-inf'));last=timestamp(q,'maxStartDate',float('inf'))
@@ -96,6 +99,9 @@ class Handler(BaseHTTPRequestHandler):
                 if valid:
                     state['tokens'].remove(token);state['logouts']+=1;state['open_at_logout']=len(state['open'])
             return self.result(204 if valid else 401)
+        if path=='/qa/guide_failure':
+            with lock:state['guide_failure']=q.get('enabled',['1'])[0]=='1'
+            return self.result(200,{})
         if path=='/qa/replacement':
             with lock:state['replacement']=q.get('enabled',['1'])[0]=='1'
             return self.result(204)

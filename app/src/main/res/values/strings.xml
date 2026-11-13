@@ -1,7 +1,7 @@
 <resources>
     <string name="login_connecting">Connecting…</string>
     <string name="local_network_access">Allow Local network access in Settings to connect to a Jellyfin server on your network.</string>
-    <string name="guide_load_failed">Could not load listings. Close the guide and try again.</string>
+    <string name="guide_load_failed">Could not load listings. Check your connection and try again.</string>
     <string name="guide_loading">Loading guide…</string>
     <string name="favorite_channel_label">★&#160;&#160;%1$s</string>
     <string name="connect_heading">Connect to Jellyfin</string>

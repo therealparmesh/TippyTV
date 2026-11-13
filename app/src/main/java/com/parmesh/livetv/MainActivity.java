@@ -934,6 +934,7 @@ public final class MainActivity extends ComponentActivity {
         Button earlier = button(R.string.earlier, null);
         Button later = button(R.string.later, null);
         Button close = button(R.string.close, dialog::dismiss);
+        Button retry = button(R.string.retry, null);
         addButton(actions, earlier);
         addButton(actions, later);
         addButton(actions, close);
@@ -956,7 +957,12 @@ public final class MainActivity extends ComponentActivity {
                 } catch (Exception error) {
                     ui.post(() -> {
                         if (!destroyed && server == api && generation == guideGeneration
-                                && dialog.isShowing() && window[0] == from) scheduleMessage(entries, R.string.guide_load_failed);
+                                && dialog.isShowing() && window[0] == from) {
+                            scheduleMessage(entries, R.string.guide_load_failed);
+                            LinearLayout.LayoutParams retrySize = new LinearLayout.LayoutParams(-2, dp(44));
+                            retrySize.topMargin = dp(12);
+                            entries.addView(retry, retrySize);
+                        }
                     });
                 }
             });
@@ -975,6 +981,7 @@ public final class MainActivity extends ComponentActivity {
             Date date = new Date(from);
             caption.setText(getString(R.string.guide_window, guideDate.format(date), clock.format(date),
                     clock.format(new Date(from + step))));
+            if (retry.hasFocus() || schedule.hasFocus()) (later.isEnabled() ? later : earlier).requestFocus();
             schedule.scrollTo(0, 0);
             List<Channels.Program> cached = epg.get(from, channel.id(), SystemClock.elapsedRealtime());
             schedule.setFocusable(false);
@@ -987,6 +994,7 @@ public final class MainActivity extends ComponentActivity {
                 ui.postDelayed(fetch, 150);
             }
         };
+        retry.setOnClickListener(view -> load.run());
         earlier.setOnClickListener(view -> { window[0] -= step; load.run(); });
         later.setOnClickListener(view -> { window[0] += step; load.run(); });
         dialog.onDismiss(cancel);

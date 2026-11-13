@@ -63,6 +63,7 @@ def streams(expected):
     raise AssertionError(state)
 
 
+request('/qa/guide_failure?enabled=1', {})
 session = request('/Users/AuthenticateByName', {'Username': 'remote-check', 'Pw': 'fixture'})
 seed = json.dumps({'base': f'http://10.0.2.2:{args.port}', 'token': session['AccessToken'],
                    'userId': session['User']['Id']}).encode()
@@ -92,6 +93,18 @@ focused('All channels')
 key(23)
 focused('1  Amber One')
 print('PASS: search and favorites empty-state recovery', flush=True)
+key(82)
+key(20)
+key(23)
+focused('Later')
+key(19)
+focused('Try again')
+request('/qa/guide_failure?enabled=0', {})
+key(23)
+assert any(node.get('text') == 'Morning magazine' for node in nodes()), 'Guide retry did not restore listings'
+key(4)
+focused('1  Amber One')
+print('PASS: guide failure, in-place retry, and focus return', flush=True)
 key(92)
 focused('1  Amber One')
 key(23)
@@ -115,6 +128,8 @@ time.sleep(7)
 assert not any(node.get('text') == 'Channels' for node in nodes()), 'Controls did not hide'
 key(23)
 focused('Channels')  # The reveal press must not also activate Channels.
+# UIAutomator may wait longer than the auto-hide delay for a moving video to idle.
+key(19)  # Reveal again if that happened before navigating to Swap.
 key(22)
 key(23)  # Swap without leaving fullscreen or opening another tuner.
 streams(2)
