@@ -28,6 +28,7 @@ final class Jellyfin {
     record Session(String server, String token, String user, String device) {}
     record Page(List<Channels.Channel> channels, int consumed, int total) {}
     record Stream(HttpUrl url, boolean hls, String liveId, String playId, boolean converted) {}
+    record QuickConnect(String code, String secret) {}
 
     static final class HttpFailure extends IOException {
         final int status;
@@ -96,13 +97,36 @@ final class Jellyfin {
     }
 
     static Session login(String server, String user, String password, String device) throws IOException, JSONException {
-        Jellyfin unauthenticated = new Jellyfin(new Session(serverUrl(server).toString(), "", "", device));
-        JSONObject result = unauthenticated.request(unauthenticated.url("Users/AuthenticateByName").build(), "POST",
-                new JSONObject().put("Username", user).put("Pw", password));
+        Jellyfin client = signInClient(server, device);
+        return client.authenticate("Users/AuthenticateByName", new JSONObject().put("Username", user).put("Pw", password));
+    }
+
+    static Jellyfin signInClient(String server, String device) {
+        return new Jellyfin(new Session(server, "", "", device));
+    }
+
+    QuickConnect startQuickConnect() throws IOException, JSONException {
+        JSONObject result = request(url("QuickConnect/Initiate").build(), "POST", null);
+        String code = result.getString("Code"), secret = result.getString("Secret");
+        if (code.isBlank() || secret.isBlank()) throw new IOException("Jellyfin returned an incomplete Quick Connect request.");
+        return new QuickConnect(code, secret);
+    }
+
+    boolean quickConnectAuthorized(QuickConnect attempt) throws IOException {
+        return request(url("QuickConnect/Connect").addQueryParameter("secret", attempt.secret()).build(), "GET", null)
+                .optBoolean("Authenticated");
+    }
+
+    Session finishQuickConnect(QuickConnect attempt) throws IOException, JSONException {
+        return authenticate("Users/AuthenticateWithQuickConnect", new JSONObject().put("Secret", attempt.secret()));
+    }
+
+    private Session authenticate(String endpoint, JSONObject body) throws IOException, JSONException {
+        JSONObject result = request(url(endpoint).build(), "POST", body);
         String token = result.getString("AccessToken");
         String userId = result.getJSONObject("User").getString("Id");
         if (token.isBlank() || userId.isBlank()) throw new IOException("Jellyfin returned an incomplete sign-in.");
-        return new Session(unauthenticated.base.toString(), token, userId, device);
+        return new Session(base.toString(), token, userId, session.device());
     }
 
     Page channels(int start, int limit) throws IOException {

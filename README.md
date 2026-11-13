@@ -5,7 +5,7 @@ A standalone, Darcula-colored Android TV and Fire OS client for Jellyfin Live TV
 ## Use it
 
 1. Sideload the APK on an Android-based Fire TV or Android TV device (Android 6/API 23 or later).
-2. Open **Jellyfin Live TV** and enter your Jellyfin server, username, and password. The app keeps only an Android Keystore-protected session token.
+2. Open **Jellyfin Live TV** and enter your server address. A `.local` hostname works when the server advertises it over multicast DNS on your LAN. Choose **Quick Connect** to approve the TV from Jellyfin on a phone or browser, or choose **Use a password**. The app stores the session token with Android Keystore protection.
 3. Select a channel to tune. **Watch** expands the video. **Back** returns to the list.
 4. Hold **Select** on another channel, then choose **Play in inset**. The inset uses half the width and height of the playback area and stays muted. **Swap** moves audio and the large picture to the other channel. **Close inset** releases the second tuner.
 5. **Search** accepts names and channel numbers. **Favorites** uses Jellyfin favorites. **Jump** goes to a letter, first/last, or ±50 channels. Page/channel and fast-forward/rewind keys also skip 50 where the remote sends those keys.

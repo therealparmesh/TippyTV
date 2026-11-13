@@ -2,13 +2,14 @@ from http.server import BaseHTTPRequestHandler,ThreadingHTTPServer
 from urllib.parse import urlsplit,parse_qs
 from datetime import datetime,timezone
 from pathlib import Path
-import json,time,threading,os
+import json,time,threading,os,secrets
 ROOT=Path(os.environ.get('JELLYFIN_QA_MEDIA','/tmp/jellyfin-live-fixture'))
 ORIGIN=os.environ.get('JELLYFIN_QA_ORIGIN','http://10.0.2.2:18798')
 PORT=int(os.environ.get('JELLYFIN_QA_PORT','18798'))
 start=time.time()
 state={'open':{},'opened':0,'closed':0,'guide':0,'favorites':set(),'writes':0,
        'tokens':set(),'logins':0,'logouts':0,'open_at_logout':None,'replacement':False}
+quick_connect={}
 lock=threading.Lock()
 channels=[{'Id':'a','Name':'Amber One','ChannelNumber':'1'},{'Id':'b','Name':'Blue Two','ChannelNumber':'2'}]
 channels += [{'Id':f'c{i}','Name':f'Channel {i:04d}','ChannelNumber':str(i)} for i in range(3,1204)]
@@ -27,6 +28,9 @@ class Handler(BaseHTTPRequestHandler):
         if path=='/qa/status':
             with lock: out={**state,'open':len(state['open']),'favorites':sorted(state['favorites']),'tokens':len(state['tokens'])}
             return self.result(200,out)
+        if path=='/QuickConnect/Connect':
+            with lock: attempt=quick_connect.get(q.get('secret',[''])[0])
+            return self.result(200,attempt) if attempt else self.result(404)
         if path=='/LiveTv/Channels':
             index=int(q.get('startIndex',['0'])[0]);count=int(q.get('limit',['256'])[0])
             with lock:
@@ -59,9 +63,26 @@ class Handler(BaseHTTPRequestHandler):
         u=urlsplit(self.path);q=parse_qs(u.query);path=u.path
         size=int(self.headers.get('Content-Length','0'))
         payload=self.rfile.read(size) if size else b''
-        if path=='/Users/AuthenticateByName':
-            if json.loads(payload).get('Pw')=='reject': return self.result(401)
+        if path=='/QuickConnect/Initiate':
+            secret=secrets.token_hex(24)
             with lock:
+                attempt={'Code':f'{secrets.randbelow(1000000):06d}','Secret':secret,'Authenticated':False}
+                quick_connect[secret]=attempt
+            return self.result(200,attempt)
+        if path=='/qa/approve':
+            code=q.get('code',[''])[0]
+            with lock:
+                match=next((a for a in quick_connect.values() if a['Code']==code),None)
+                if match:match['Authenticated']=True
+            return self.result(204 if match else 404)
+        if path in ('/Users/AuthenticateByName','/Users/AuthenticateWithQuickConnect'):
+            fields=json.loads(payload)
+            if path=='/Users/AuthenticateByName' and fields.get('Pw')=='reject': return self.result(401)
+            with lock:
+                if path=='/Users/AuthenticateWithQuickConnect':
+                    secret=fields.get('Secret')
+                    if not quick_connect.get(secret,{}).get('Authenticated'): return self.result(401)
+                    del quick_connect[secret]
                 state['logins']+=1; token='fixture-token-'+str(state['logins']);state['tokens'].add(token)
             return self.result(200,{'AccessToken':token,'User':{'Id':'fixture-user'}})
         if path=='/Sessions/Logout':
