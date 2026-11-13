@@ -71,8 +71,10 @@ public final class MainActivity extends ComponentActivity {
     private String query = "";
     private String loadProblem;
     private boolean favoritesOnly, catalogBusy, guideBusy, fullscreen, foreground, destroyed;
-    private int visibleGeneration, expectedCount, offset, focusedPosition;
-    private int pendingJump = RecyclerView.NO_POSITION;
+    private volatile int visibleGeneration;
+    private int expectedCount, offset, focusedPosition;
+    private boolean resetSelection;
+    private String pendingJump;
     private long noGuideUntil, guideCheckedUntil, guideBackoffUntil;
     private volatile long catalogGeneration;
     private FrameLayout root, video, inset;
@@ -258,8 +260,8 @@ public final class MainActivity extends ComponentActivity {
         browser.addView(listArea, new LinearLayout.LayoutParams(-1, 0, 1));
         list = new RecyclerView(this) {
             @Override public boolean dispatchKeyEvent(KeyEvent event) {
-                if (handleRemoteKey(event)) return true;
-                return super.dispatchKeyEvent(event);
+                if (event.getAction() == KeyEvent.ACTION_UP && isPageKey(event.getKeyCode())) return true;
+                return handleRemoteKey(event) || super.dispatchKeyEvent(event);
             }
         };
         list.setId(View.generateViewId());
@@ -269,13 +271,14 @@ public final class MainActivity extends ComponentActivity {
         rows = new LinearLayoutManager(this) {
             @Override public void onLayoutCompleted(RecyclerView.State state) {
                 super.onLayoutCompleted(state);
-                int index = pendingJump;
-                if (index == RecyclerView.NO_POSITION) return;
-                pendingJump = RecyclerView.NO_POSITION;
-                list.post(() -> {
-                    if (destroyed || focusedPosition != index || fullscreen) return;
-                    RecyclerView.ViewHolder holder = list.findViewHolderForAdapterPosition(index);
-                    if (holder != null) holder.itemView.requestFocus();
+                String id = pendingJump;
+                if (id == null) return;
+                list.postOnAnimation(() -> {
+                    if (destroyed || !id.equals(pendingJump) || fullscreen) return;
+                    List<Channels.Channel> channels = adapter.getCurrentList();
+                    if (focusedPosition >= channels.size() || !id.equals(channels.get(focusedPosition).id())) return;
+                    RecyclerView.ViewHolder holder = list.findViewHolderForAdapterPosition(focusedPosition);
+                    if (holder != null && holder.itemView.requestFocusFromTouch()) pendingJump = null;
                 });
             }
         };
@@ -351,7 +354,7 @@ public final class MainActivity extends ComponentActivity {
 
         player = new Playback(this, mainSurface, insetSurface, this::updatePlayback);
         setContentView(root);
-        queryButton.requestFocus();
+        queryButton.requestFocusFromTouch();
         updateSelection();
         updatePlayback();
         loadCatalog(true);
@@ -418,6 +421,7 @@ public final class MainActivity extends ComponentActivity {
     }
 
     private void renderFilter(boolean resetPosition) {
+        resetSelection |= resetPosition;
         int generation = ++visibleGeneration;
         List<Channels.Channel> channels = all;
         Set<String> stars = favorites;
@@ -426,23 +430,25 @@ public final class MainActivity extends ComponentActivity {
         queryButton.setText(term.isBlank() ? "Search" : "Search •");
         filterButton.setText(starred ? "Show all" : "Favorites");
         search.execute(() -> {
+            if (generation != visibleGeneration) return;
             List<Channels.Channel> filtered = Channels.filter(channels, stars, starred, term);
             Map<String, Integer> index = Channels.jumpTargets(filtered);
             ui.post(() -> {
                 if (destroyed || api == null || generation != visibleGeneration) return;
-                jumps = index;
                 adapter.submitList(filtered, () -> {
                     if (destroyed || generation != visibleGeneration) return;
-                    if (resetPosition) {
-                        focusedPosition = 0;
-                        selected = filtered.isEmpty() ? null : filtered.get(0);
-                        rows.scrollToPositionWithOffset(0, 0);
-                    } else if (selected == null && !filtered.isEmpty()) {
-                        selected = filtered.get(0);
-                    } else if (starred && selected != null && !stars.contains(selected.id())) {
-                        focusedPosition = Channels.jumpPage(focusedPosition, filtered.size(), 0);
-                        selected = filtered.isEmpty() ? null : filtered.get(focusedPosition);
+                    jumps = index;
+                    int position = selected == null ? -1 : Channels.indexOf(filtered, selected.id());
+                    if (filtered.isEmpty()) {
+                        selected = null; pendingJump = null; focusedPosition = 0;
+                    } else if (resetSelection || pendingJump != null || (position < 0 && list.hasFocus())) {
+                        jump(resetSelection ? 0 : position >= 0 ? position
+                                : Channels.jumpPage(focusedPosition, filtered.size(), 0));
+                    } else {
+                        focusedPosition = position >= 0 ? position : Channels.jumpPage(focusedPosition, filtered.size(), 0);
+                        selected = filtered.get(focusedPosition);
                     }
+                    resetSelection = false;
                     updateCount();
                     updateSelection();
                     scheduleGuide();
@@ -492,7 +498,10 @@ public final class MainActivity extends ComponentActivity {
             else if (i == 1) page(-50);
             else if (i == 2) page(50);
             else if (i == 3) jump(adapter.getItemCount() - 1);
-            else jump(jumps.getOrDefault(labels.get(i), 0));
+            else {
+                Integer position = jumps.get(labels.get(i));
+                if (position != null) jump(position);
+            }
         }).show();
     }
 
@@ -505,8 +514,9 @@ public final class MainActivity extends ComponentActivity {
         updateSelection();
         // Park focus outside the recycled rows until the target has been laid out.
         // Otherwise RecyclerView can scroll the previously focused row back into view.
+        pendingJump = selected.id();
+        list.stopScroll();
         if (list.hasFocus()) queryButton.requestFocus();
-        pendingJump = index;
         rows.scrollToPositionWithOffset(index, 0);
         scheduleGuide();
     }
@@ -548,6 +558,8 @@ public final class MainActivity extends ComponentActivity {
     }
 
     private void channelActions(Channels.Channel channel) {
+        int position = Channels.indexOf(adapter.getCurrentList(), channel.id());
+        if (position >= 0) focusedPosition = position;
         selected = channel; updateSelection();
         boolean canInset = player.primary() != null && !player.primary().id().equals(channel.id());
         List<String> entries = new ArrayList<>(List.of("Watch", favorites.contains(channel.id()) ? "Remove favorite" : "Add favorite", "Programme guide"));
@@ -746,7 +758,7 @@ public final class MainActivity extends ComponentActivity {
         player.destroy(); player = null;
         api = null; selected = null; resumeMain = null; resumeInset = null;
         all = List.of(); favorites = Set.of(); favoriteOverrides.clear(); pendingFavorites.clear();
-        pendingJump = RecyclerView.NO_POSITION; focusedPosition = 0;
+        pendingJump = null; focusedPosition = 0; resetSelection = false;
         query = ""; favoritesOnly = false; fullscreen = false; catalogBusy = false; guideBusy = false;
         noGuideUntil = 0; guideCheckedUntil = 0; guideBackoffUntil = 0;
         epg.clear(); store.clear(); showLogin("");
@@ -783,6 +795,10 @@ public final class MainActivity extends ComponentActivity {
 
     @Override public boolean onKeyDown(int key, KeyEvent event) {
         return handleRemoteKey(event) || super.onKeyDown(key, event);
+    }
+
+    private static boolean isPageKey(int key) {
+        return key == KeyEvent.KEYCODE_PAGE_DOWN || key == KeyEvent.KEYCODE_PAGE_UP;
     }
 
     private boolean handleRemoteKey(KeyEvent event) {
@@ -830,12 +846,14 @@ public final class MainActivity extends ComponentActivity {
             row.setOnFocusChangeListener((view, focused) -> {
                 int p = holder.getBindingAdapterPosition();
                 if (focused && p != RecyclerView.NO_POSITION) {
+                    if (pendingJump != null && !pendingJump.equals(getItem(p).id())) return;
                     focusedPosition = p; selected = getItem(p); updateSelection(); scheduleGuide();
                 }
             });
             row.setOnClickListener(v -> {
                 int p = holder.getBindingAdapterPosition();
                 if (p != RecyclerView.NO_POSITION) {
+                    pendingJump = null;
                     focusedPosition = p; selected = getItem(p); updateSelection(); tune(false);
                 }
             });

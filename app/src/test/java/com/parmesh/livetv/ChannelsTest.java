@@ -21,11 +21,17 @@ public class ChannelsTest {
 
     @Test public void jumpsUseFilteredIndicesAndClampAtBoundaries() {
         var channels = List.of(new Channels.Channel("1", "Élan", "", false),
-                new Channels.Channel("2", "Beta", "", false),
-                new Channels.Channel("3", "# Seven", "", false));
+                new Channels.Channel("2", "  Beta News", "", false),
+                new Channels.Channel("3", "# Seven", "", false),
+                new Channels.Channel("4", "Beta Weather", "", false));
         assertEquals(List.of("#", "B", "E"), new ArrayList<>(Channels.jumpTargets(channels).keySet()));
         assertEquals(Integer.valueOf(0), Channels.jumpTargets(channels).get("E"));
-        assertEquals(2, Channels.jumpPage(1, channels.size(), Integer.MAX_VALUE));
+        assertEquals(Integer.valueOf(1), Channels.jumpTargets(channels).get("B"));
+        var filtered = Channels.filter(channels, Set.of(), false, "weather beta");
+        assertEquals(Integer.valueOf(0), Channels.jumpTargets(filtered).get("B"));
+        assertEquals(0, Channels.indexOf(filtered, "4"));
+        assertEquals(-1, Channels.indexOf(filtered, "2"));
+        assertEquals(3, Channels.jumpPage(1, channels.size(), Integer.MAX_VALUE));
         assertEquals(0, Channels.jumpPage(0, channels.size(), -50));
         assertEquals(0, Channels.jumpPage(10, 0, 50));
     }

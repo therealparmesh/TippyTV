@@ -15,10 +15,15 @@ import java.util.regex.Pattern;
 final class Channels {
     private static final Pattern MARKS = Pattern.compile("\\p{M}+");
     private static final Pattern SPACES = Pattern.compile("\\s+");
+    private static final String JUMP_KEYS = "#ABCDEFGHIJKLMNOPQRSTUVWXYZ";
 
-    record Channel(String id, String name, String number, boolean favorite, String searchKey) {
+    record Channel(String id, String name, String number, boolean favorite, String searchKey, int jumpBucket) {
         Channel(String id, String name, String number, boolean favorite) {
-            this(id, name, number, favorite, normalize(name + " " + number));
+            this(id, name, number, favorite, normalize(name));
+        }
+
+        private Channel(String id, String name, String number, boolean favorite, String normalizedName) {
+            this(id, name, number, favorite, (normalizedName + " " + normalize(number)).trim(), bucket(normalizedName));
         }
 
         String label() { return number.isBlank() ? name : number + "  " + name; }
@@ -52,20 +57,29 @@ final class Channels {
     }
 
     static Map<String, Integer> jumpTargets(List<Channel> channels) {
-        Map<String, Integer> found = new LinkedHashMap<>();
+        int[] first = new int[JUMP_KEYS.length()];
         for (int i = 0; i < channels.size(); i++) {
-            String name = normalize(channels.get(i).name);
-            char initial = name.isEmpty() ? '#' : Character.toUpperCase(name.charAt(0));
-            String bucket = initial >= 'A' && initial <= 'Z' ? String.valueOf(initial) : "#";
-            found.putIfAbsent(bucket, i);
+            int bucket = channels.get(i).jumpBucket;
+            if (first[bucket] == 0) first[bucket] = i + 1;
         }
         Map<String, Integer> ordered = new LinkedHashMap<>();
-        if (found.containsKey("#")) ordered.put("#", found.get("#"));
-        for (char ch = 'A'; ch <= 'Z'; ch++) {
-            String key = String.valueOf(ch);
-            if (found.containsKey(key)) ordered.put(key, found.get(key));
+        for (int i = 0; i < first.length; i++) {
+            if (first[i] > 0) ordered.put(String.valueOf(JUMP_KEYS.charAt(i)), first[i] - 1);
         }
         return ordered;
+    }
+
+    private static int bucket(String name) {
+        if (name.isEmpty()) return 0;
+        char initial = Character.toUpperCase(name.charAt(0));
+        return initial >= 'A' && initial <= 'Z' ? initial - 'A' + 1 : 0;
+    }
+
+    static int indexOf(List<Channel> channels, String id) {
+        for (int i = 0; i < channels.size(); i++) {
+            if (channels.get(i).id.equals(id)) return i;
+        }
+        return -1;
     }
 
     static int jumpPage(int position, int size, int delta) {
