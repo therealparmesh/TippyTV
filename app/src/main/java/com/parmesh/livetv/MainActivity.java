@@ -44,6 +44,7 @@ import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
 
 @OptIn(markerClass = UnstableApi.class)
 public final class MainActivity extends ComponentActivity {
@@ -75,7 +76,9 @@ public final class MainActivity extends ComponentActivity {
     private int expectedCount, offset, focusedPosition;
     private boolean resetSelection;
     private String pendingJump;
+    private long guideWindow = Long.MIN_VALUE;
     private long noGuideUntil, guideCheckedUntil, guideBackoffUntil;
+    private int guideGeneration;
     private volatile long catalogGeneration;
     private FrameLayout root, video, inset;
     private PlayerView mainSurface, insetSurface;
@@ -148,7 +151,7 @@ public final class MainActivity extends ComponentActivity {
         v.setBackground(focusBackground(BAR)); v.setMinWidth(0); v.setMinimumWidth(0);
         v.setMinHeight(0); v.setMinimumHeight(0);
         v.setPadding(dp(12), 0, dp(12), 0); v.setFocusable(true);
-        v.setOnClickListener(view -> action.run());
+        if (action != null) v.setOnClickListener(view -> action.run());
         return v;
     }
 
@@ -175,7 +178,7 @@ public final class MainActivity extends ComponentActivity {
         EditText password = edit("Password", InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_PASSWORD);
         card.addView(address); card.addView(username); card.addView(password);
         TextView feedback = text(message, 13, ACCENT);
-        Button login = button("Connect", () -> {});
+        Button login = button("Connect", null);
         LinearLayout.LayoutParams loginSize = new LinearLayout.LayoutParams(-1, dp(42));
         loginSize.topMargin = dp(7); card.addView(login, loginSize);
         card.addView(feedback);
@@ -632,10 +635,14 @@ public final class MainActivity extends ComponentActivity {
     private void visibleGuide() {
         if (api == null || fullscreen || guideBusy || !foreground) return;
         long elapsed = SystemClock.elapsedRealtime();
+        long window = GuideCache.window(System.currentTimeMillis());
+        if (window != guideWindow) {
+            guideWindow = window;
+            noGuideUntil = guideCheckedUntil = guideBackoffUntil = 0;
+        }
         if (elapsed < noGuideUntil || elapsed < guideBackoffUntil) return;
         int first = rows.findFirstVisibleItemPosition(), last = rows.findLastVisibleItemPosition();
         if (first < 0 || last < first) return;
-        long window = GuideCache.window(System.currentTimeMillis());
         List<String> ids = new ArrayList<>(GUIDE_BATCH);
         List<Channels.Channel> snapshot = adapter.getCurrentList();
         for (int i = first; i <= last && i < snapshot.size() && ids.size() < GUIDE_BATCH; i++) {
@@ -644,6 +651,7 @@ public final class MainActivity extends ComponentActivity {
         }
         if (ids.isEmpty()) return;
         boolean probe = elapsed >= guideCheckedUntil;
+        int generation = guideGeneration;
         Jellyfin server = api;
         guideBusy = true;
         guide.execute(() -> {
@@ -653,6 +661,7 @@ public final class MainActivity extends ComponentActivity {
                 ui.post(() -> {
                     if (destroyed || api != server) return;
                     guideBusy = false;
+                    if (generation != guideGeneration) { scheduleGuide(); return; }
                     long time = SystemClock.elapsedRealtime();
                     if (probe) guideCheckedUntil = time + GuideCache.FRESH;
                     if (!available) noGuideUntil = time + GuideCache.FRESH;
@@ -663,7 +672,9 @@ public final class MainActivity extends ComponentActivity {
             } catch (Exception failure) {
                 ui.post(() -> {
                     if (destroyed || api != server) return;
-                    guideBusy = false; guideBackoffUntil = SystemClock.elapsedRealtime() + 15_000;
+                    guideBusy = false;
+                    if (generation != guideGeneration) { scheduleGuide(); return; }
+                    guideBackoffUntil = SystemClock.elapsedRealtime() + 15_000;
                     refreshGuideRows();
                 });
             }
@@ -681,10 +692,11 @@ public final class MainActivity extends ComponentActivity {
 
     private String guideLine(String id, boolean details) {
         long time = System.currentTimeMillis(), elapsed = SystemClock.elapsedRealtime();
-        List<Channels.Program> schedule = epg.get(GuideCache.window(time), id, elapsed);
+        long window = GuideCache.window(time);
+        List<Channels.Program> schedule = epg.get(window, id, elapsed);
         if (schedule == null) {
-            if (elapsed < noGuideUntil) return "No programme guide from server";
-            if (elapsed < guideBackoffUntil) return "Guide temporarily unavailable";
+            if (window == guideWindow && elapsed < noGuideUntil) return "No programme guide from server";
+            if (window == guideWindow && elapsed < guideBackoffUntil) return "Guide temporarily unavailable";
             return details ? "Guide · select a channel to watch" : "—";
         }
         Channels.Program current = Channels.now(schedule, time), next = Channels.next(schedule, time);
@@ -708,29 +720,50 @@ public final class MainActivity extends ComponentActivity {
         LinearLayout actions = new LinearLayout(this); content.addView(actions);
         AlertDialog dialog = new AlertDialog.Builder(this).setTitle(channel.label()).setView(content)
                 .setPositiveButton("Close", null).create();
-        Runnable load = () -> {
+        Future<?>[] request = { null };
+        Runnable fetch = () -> {
             long from = window[0];
-            caption.setText(clock.format(new Date(from)) + " – " + clock.format(new Date(from + GUIDE_HOURS * 3_600_000L)));
-            List<Channels.Program> cached = epg.get(from, channel.id(), SystemClock.elapsedRealtime());
-            if (cached != null) { entries.setText(scheduleText(cached, from)); return; }
-            entries.setText("Loading guide…");
-            guide.execute(() -> {
+            int generation = guideGeneration;
+            request[0] = guide.submit(() -> {
                 try {
                     List<Channels.Program> result = server.programs(List.of(channel.id()), from, GUIDE_HOURS).get(channel.id());
                     ui.post(() -> {
-                        if (destroyed || server != api) return;
+                        if (destroyed || server != api || generation != guideGeneration) return;
                         epg.put(from, channel.id(), result, SystemClock.elapsedRealtime());
                         if (dialog.isShowing() && window[0] == from) entries.setText(scheduleText(result, from));
                     });
                 } catch (Exception error) {
-                    ui.post(() -> { if (dialog.isShowing() && window[0] == from) entries.setText("Guide request failed."); });
+                    ui.post(() -> {
+                        if (!destroyed && server == api && generation == guideGeneration
+                                && dialog.isShowing() && window[0] == from) entries.setText("Guide request failed.");
+                    });
                 }
             });
         };
-        addButton(actions, button("Earlier", () -> { window[0] = Math.max(initial, window[0] - 10_800_000L); load.run(); }));
-        addButton(actions, button("Later", () -> {
-            window[0] = Math.min(initial + 7 * 86_400_000L, window[0] + 10_800_000L); load.run();
-        }));
+        Runnable cancel = () -> {
+            ui.removeCallbacks(fetch);
+            if (request[0] != null) request[0].cancel(false);
+        };
+        long step = GUIDE_HOURS * 3_600_000L;
+        long limit = initial + 7 * 86_400_000L;
+        Button earlier = button("Earlier", null), later = button("Later", null);
+        Runnable load = () -> {
+            cancel.run();
+            long from = window[0];
+            caption.setText(clock.format(new Date(from)) + " – " + clock.format(new Date(from + step)));
+            List<Channels.Program> cached = epg.get(from, channel.id(), SystemClock.elapsedRealtime());
+            if (cached != null) { entries.setText(scheduleText(cached, from)); return; }
+            entries.setText("Loading guide…");
+            ui.postDelayed(fetch, 150);
+        };
+        earlier.setOnClickListener(view -> {
+            if (window[0] > initial) { window[0] -= step; load.run(); }
+        });
+        later.setOnClickListener(view -> {
+            if (window[0] < limit) { window[0] += step; load.run(); }
+        });
+        addButton(actions, earlier); addButton(actions, later);
+        dialog.setOnDismissListener(d -> cancel.run());
         dialog.show(); load.run();
     }
 
@@ -747,7 +780,10 @@ public final class MainActivity extends ComponentActivity {
         if (api == null) return;
         new AlertDialog.Builder(this).setTitle("Jellyfin server").setMessage(api.session.server())
                 .setPositiveButton("Refresh channels", (d, w) -> {
-                    epg.clear(); noGuideUntil = 0; guideCheckedUntil = 0; loadCatalog(offset == 0 || loadProblem == null);
+                    ++guideGeneration;
+                    epg.clear(); noGuideUntil = guideCheckedUntil = guideBackoffUntil = 0;
+                    refreshGuideRows(); scheduleGuide();
+                    loadCatalog(offset == 0 || loadProblem == null);
                 })
                 .setNeutralButton("Disconnect", (d, w) -> disconnect())
                 .setNegativeButton("Close", null).show();
@@ -760,7 +796,8 @@ public final class MainActivity extends ComponentActivity {
         all = List.of(); favorites = Set.of(); favoriteOverrides.clear(); pendingFavorites.clear();
         pendingJump = null; focusedPosition = 0; resetSelection = false;
         query = ""; favoritesOnly = false; fullscreen = false; catalogBusy = false; guideBusy = false;
-        noGuideUntil = 0; guideCheckedUntil = 0; guideBackoffUntil = 0;
+        ++guideGeneration;
+        noGuideUntil = guideCheckedUntil = guideBackoffUntil = 0;
         epg.clear(); store.clear(); showLogin("");
     }
 
