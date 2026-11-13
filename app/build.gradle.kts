@@ -1,5 +1,5 @@
 plugins {
-    id("com.android.application") version "9.4.1"
+    id("com.android.application") version "9.5.1"
 }
 
 android {
@@ -25,7 +25,6 @@ android {
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"))
         }
     }
-    lint { abortOnError = true }
 }
 
 dependencies {
@@ -35,7 +34,7 @@ dependencies {
     implementation("androidx.media3:media3-exoplayer-hls:1.11.1")
     implementation("androidx.media3:media3-ui:1.11.1")
     implementation("androidx.media3:media3-datasource-okhttp:1.11.1")
-    implementation("com.squareup.okhttp3:okhttp:4.12.0")
+    implementation("com.squareup.okhttp3:okhttp:5.5.1")
     coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.1.5")
     testImplementation("junit:junit:4.13.2")
 }
