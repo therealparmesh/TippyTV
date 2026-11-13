@@ -91,7 +91,7 @@ final class TvDialog {
         if (focus != null) {
             focus.requestFocusFromTouch();
             card.post(() -> {
-                if (dialog.isShowing()) focus.requestFocusFromTouch();
+                if (dialog.isShowing() && !card.hasFocus()) focus.requestFocusFromTouch();
             });
         }
     }
