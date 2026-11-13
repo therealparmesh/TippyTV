@@ -7,7 +7,8 @@ ROOT=Path(os.environ.get('JELLYFIN_QA_MEDIA','/tmp/jellyfin-live-fixture'))
 ORIGIN=os.environ.get('JELLYFIN_QA_ORIGIN','http://10.0.2.2:18798')
 PORT=int(os.environ.get('JELLYFIN_QA_PORT','18798'))
 start=time.time()
-state={'open':{},'opened':0,'closed':0,'guide':0,'favorites':set(),'writes':0}
+state={'open':{},'opened':0,'closed':0,'guide':0,'favorites':set(),'writes':0,
+       'tokens':set(),'logins':0,'logouts':0,'open_at_logout':None,'replacement':False}
 lock=threading.Lock()
 channels=[{'Id':'a','Name':'Amber One','ChannelNumber':'1'},{'Id':'b','Name':'Blue Two','ChannelNumber':'2'}]
 channels += [{'Id':f'c{i}','Name':f'Channel {i:04d}','ChannelNumber':str(i)} for i in range(3,1204)]
@@ -24,12 +25,16 @@ class Handler(BaseHTTPRequestHandler):
     def do_GET(self):
         u=urlsplit(self.path);q=parse_qs(u.query);path=u.path
         if path=='/qa/status':
-            with lock: out={**state,'open':len(state['open']),'favorites':sorted(state['favorites'])}
+            with lock: out={**state,'open':len(state['open']),'favorites':sorted(state['favorites']),'tokens':len(state['tokens'])}
             return self.result(200,out)
         if path=='/LiveTv/Channels':
             index=int(q.get('startIndex',['0'])[0]);count=int(q.get('limit',['256'])[0])
-            with lock: rows=[{**x,'UserData':{'IsFavorite':x['Id'] in state['favorites']}} for x in channels[index:index+count]]
-            return self.result(200,{'Items':rows,'TotalRecordCount':len(channels)})
+            with lock:
+                token=self.headers.get('Authorization','').split('Token="')[-1].rstrip('"')
+                valid=token in state['tokens']
+                lineup=([dict(channels[0],Id='replacement'),*channels[1:]] if state['replacement'] else channels)
+                rows=[{**x,'UserData':{'IsFavorite':x['Id'] in state['favorites']}} for x in lineup[index:index+count]]
+            return self.result(200,{'Items':rows,'TotalRecordCount':len(lineup)}) if valid else self.result(401)
         if path=='/LiveTv/Programs':
             with lock:state['guide']+=1
             ids=q.get('channelIds',['a,b'])[0].split(',')
@@ -53,9 +58,22 @@ class Handler(BaseHTTPRequestHandler):
     def do_POST(self):
         u=urlsplit(self.path);q=parse_qs(u.query);path=u.path
         size=int(self.headers.get('Content-Length','0'))
-        if size:self.rfile.read(size)
+        payload=self.rfile.read(size) if size else b''
         if path=='/Users/AuthenticateByName':
-            return self.result(200,{'AccessToken':'fixture-token','User':{'Id':'fixture-user'}})
+            if json.loads(payload).get('Pw')=='reject': return self.result(401)
+            with lock:
+                state['logins']+=1; token='fixture-token-'+str(state['logins']);state['tokens'].add(token)
+            return self.result(200,{'AccessToken':token,'User':{'Id':'fixture-user'}})
+        if path=='/Sessions/Logout':
+            token=self.headers.get('Authorization','').split('Token="')[-1].rstrip('"')
+            with lock:
+                valid=token in state['tokens']
+                if valid:
+                    state['tokens'].remove(token);state['logouts']+=1;state['open_at_logout']=len(state['open'])
+            return self.result(204 if valid else 401)
+        if path=='/qa/replacement':
+            with lock:state['replacement']=q.get('enabled',['1'])[0]=='1'
+            return self.result(204)
         if path.startswith('/Items/') and path.endswith('/PlaybackInfo'):
             channel=path.split('/')[2]
             if channel not in ('a','b'): return self.result(200,{'MediaSources':[]})
