@@ -1,10 +1,13 @@
 package com.parmesh.livetv;
 
+import android.Manifest;
 import android.app.AlertDialog;
+import android.content.pm.PackageManager;
 import android.content.res.ColorStateList;
 import android.graphics.Typeface;
 import android.graphics.drawable.GradientDrawable;
 import android.graphics.drawable.StateListDrawable;
+import android.os.Build;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
@@ -20,13 +23,20 @@ import android.view.inputmethod.EditorInfo;
 import android.widget.Button;
 import android.widget.EditText;
 import android.widget.FrameLayout;
+import android.widget.HorizontalScrollView;
 import android.widget.LinearLayout;
 import android.widget.ScrollView;
 import android.widget.TextView;
 import android.widget.Toast;
 import androidx.activity.ComponentActivity;
 import androidx.activity.OnBackPressedCallback;
+import androidx.activity.result.ActivityResultLauncher;
+import androidx.activity.result.contract.ActivityResultContracts;
 import androidx.annotation.OptIn;
+import androidx.core.view.ViewCompat;
+import androidx.core.view.WindowCompat;
+import androidx.core.view.WindowInsetsCompat;
+import androidx.core.view.WindowInsetsControllerCompat;
 import androidx.media3.common.util.UnstableApi;
 import androidx.media3.ui.PlayerView;
 import androidx.recyclerview.widget.DiffUtil;
@@ -88,6 +98,13 @@ public final class MainActivity extends ComponentActivity {
     private TextView count, empty, selectedName, programText, mainMessage, insetMessage, watchTitle, watchStatus;
     private Button filterButton, queryButton, watchButton, insetButton, swapButton, closeInset, starButton;
     private Button watchSwap, watchClose;
+    private Runnable pendingNetworkAction;
+    private final ActivityResultLauncher<String> networkPermission = registerForActivityResult(
+            new ActivityResultContracts.RequestPermission(), granted -> {
+                Runnable action = pendingNetworkAction;
+                pendingNetworkAction = null;
+                if (action != null && !destroyed) action.run();
+            });
     private RecyclerView list;
     private LinearLayoutManager rows;
     private ChannelAdapter adapter;
@@ -107,8 +124,9 @@ public final class MainActivity extends ComponentActivity {
         getOnBackPressedDispatcher().addCallback(this, new OnBackPressedCallback(true) {
             @Override public void handleOnBackPressed() { back(); }
         });
-        getWindow().getDecorView().setSystemUiVisibility(View.SYSTEM_UI_FLAG_FULLSCREEN
-                | View.SYSTEM_UI_FLAG_HIDE_NAVIGATION | View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY);
+        WindowInsetsControllerCompat bars = WindowCompat.getInsetsController(getWindow(), getWindow().getDecorView());
+        bars.setSystemBarsBehavior(WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE);
+        bars.hide(WindowInsetsCompat.Type.systemBars());
         store = new SessionStore(this);
         setContentView(text("Opening Jellyfin Live TV…", 18, ACCENT));
         accounts.execute(() -> {
@@ -116,12 +134,41 @@ public final class MainActivity extends ComponentActivity {
             ui.post(() -> {
                 if (destroyed) return;
                 if (saved == null) showLogin("");
-                else connected(saved);
+                else requestLocalNetwork(() -> connected(saved));
             });
         });
     }
 
     private int dp(float value) { return Math.round(value * getResources().getDisplayMetrics().density); }
+
+    private boolean needsLocalNetworkPermission() {
+        return Build.VERSION.SDK_INT >= Build.VERSION_CODES.CINNAMON_BUN
+                && checkSelfPermission(Manifest.permission.ACCESS_LOCAL_NETWORK) != PackageManager.PERMISSION_GRANTED;
+    }
+
+    private void requestLocalNetwork(Runnable next) {
+        if (needsLocalNetworkPermission()) {
+            pendingNetworkAction = next;
+            networkPermission.launch(Manifest.permission.ACCESS_LOCAL_NETWORK);
+        } else next.run();
+    }
+
+    private void showScreen(FrameLayout screen) {
+        ViewCompat.setOnApplyWindowInsetsListener(screen, (view, insets) -> {
+            var safe = insets.getInsets(WindowInsetsCompat.Type.displayCutout() | WindowInsetsCompat.Type.ime());
+            view.setPadding(safe.left, safe.top, safe.right, safe.bottom);
+            return insets;
+        });
+        setContentView(screen);
+    }
+
+    private HorizontalScrollView scrollBar(LinearLayout row) {
+        HorizontalScrollView bar = new HorizontalScrollView(this);
+        bar.setFillViewport(true);
+        bar.setHorizontalScrollBarEnabled(false);
+        bar.addView(row);
+        return bar;
+    }
 
     private TextView text(String value, int size, int color) {
         TextView view = new TextView(this);
@@ -187,47 +234,58 @@ public final class MainActivity extends ComponentActivity {
         card.addView(feedback);
         ScrollView scroll = new ScrollView(this);
         scroll.setFillViewport(false); scroll.addView(card);
-        int width = Math.min(dp(470), getResources().getDisplayMetrics().widthPixels - dp(32));
-        FrameLayout.LayoutParams cardSize = new FrameLayout.LayoutParams(width, -2, Gravity.CENTER);
-        screen.addView(scroll, cardSize);
-        setContentView(screen);
-        getWindow().setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_STATE_ALWAYS_HIDDEN
-                | WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE);
+        screen.addView(scroll, new FrameLayout.LayoutParams(dp(470), -2, Gravity.CENTER));
+        screen.addOnLayoutChangeListener((v, l, t, r, b, ol, ot, or, ob) -> {
+            int width = Math.max(0, Math.min(dp(470), r - l - dp(32)));
+            if (scroll.getLayoutParams().width == width) return;
+            ViewGroup.LayoutParams size = scroll.getLayoutParams();
+            size.width = width;
+            scroll.setLayoutParams(size);
+        });
+        showScreen(screen);
         address.requestFocus();
         login.setOnClickListener(v -> {
             String server = address.getText().toString(), user = username.getText().toString().trim();
             String secret = password.getText().toString();
-            if (server.isBlank() || user.isBlank()) { feedback.setText("Enter a server and username."); return; }
-            login.setEnabled(false); feedback.setText("Connecting…");
-            accounts.execute(() -> {
-                try {
-                    Jellyfin.Session session = Jellyfin.login(server, user, secret, store.device());
-                    boolean persisted;
-                    try { store.save(session); persisted = true; }
-                    catch (Exception unavailable) { persisted = false; }
-                    boolean saved = persisted;
-                    ui.post(() -> {
-                        if (destroyed) return;
-                        password.getText().clear();
-                        connected(session);
-                        if (!saved) toast("Connected. This device could not save the sign-in.");
-                    });
-                } catch (Exception error) {
-                    ui.post(() -> {
-                        if (destroyed) return;
-                        feedback.setText(error instanceof Jellyfin.HttpFailure http && http.status == 401
-                                ? "Username or password was rejected."
-                                : error instanceof IllegalArgumentException ? error.getMessage()
-                                : "Could not connect. Check the server address and network.");
-                        login.setEnabled(true);
-                    });
-                }
+            if (server.isBlank() || user.isBlank()) { feedback.setText(R.string.login_required_fields); return; }
+            login.setEnabled(false);
+            requestLocalNetwork(() -> {
+                feedback.setText(R.string.login_connecting);
+                signIn(server, user, secret, password, feedback, login);
             });
         });
         password.setImeOptions(EditorInfo.IME_ACTION_DONE | EditorInfo.IME_FLAG_NO_EXTRACT_UI);
         password.setOnEditorActionListener((v, action, event) -> {
-            if (action == EditorInfo.IME_ACTION_DONE) { login.performClick(); return true; }
+            if (action == EditorInfo.IME_ACTION_DONE && login.isEnabled()) { login.performClick(); return true; }
             return false;
+        });
+    }
+
+    private void signIn(String server, String user, String secret, EditText password, TextView feedback, Button login) {
+        accounts.execute(() -> {
+            try {
+                Jellyfin.Session session = Jellyfin.login(server, user, secret, store.device());
+                boolean persisted;
+                try { store.save(session); persisted = true; }
+                catch (Exception unavailable) { persisted = false; }
+                boolean saved = persisted;
+                ui.post(() -> {
+                    if (destroyed) return;
+                    password.getText().clear();
+                    connected(session);
+                    if (!saved) toast("Connected. This device could not save the sign-in.");
+                });
+            } catch (Exception error) {
+                ui.post(() -> {
+                    if (destroyed) return;
+                    feedback.setText(error instanceof Jellyfin.HttpFailure http && http.status == 401
+                            ? "Username or password was rejected."
+                            : error instanceof IllegalArgumentException ? error.getMessage()
+                            : needsLocalNetworkPermission() ? getString(R.string.local_network_access)
+                            : "Could not connect. Check the server address and network.");
+                    login.setEnabled(true);
+                });
+            }
         });
     }
 
@@ -253,7 +311,7 @@ public final class MainActivity extends ComponentActivity {
         addButton(header, button("Jump", this::jumpDialog));
         addButton(header, button("Guide", this::scheduleDialog));
         addButton(header, button("Server", this::serverDialog));
-        shell.addView(header, new LinearLayout.LayoutParams(-1, dp(44)));
+        shell.addView(scrollBar(header), new LinearLayout.LayoutParams(-1, dp(44)));
 
         body = new LinearLayout(this);
         LinearLayout.LayoutParams content = new LinearLayout.LayoutParams(-1, 0, 1);
@@ -345,7 +403,19 @@ public final class MainActivity extends ComponentActivity {
         swapButton = button("Swap", () -> player.swap()); addButton(controls, swapButton);
         closeInset = button("Close inset", () -> player.stopInset()); addButton(controls, closeInset);
         starButton = button("☆", this::favoriteSelected); addButton(controls, starButton);
-        stage.addView(controls);
+        stage.addView(scrollBar(controls));
+
+        shell.addOnLayoutChangeListener((v, l, t, r, b, ol, ot, or, ob) -> {
+            if (r - l == or - ol) return;
+            boolean compact = r - l < dp(700);
+            body.setOrientation(compact ? LinearLayout.VERTICAL : LinearLayout.HORIZONTAL);
+            browser.setLayoutParams(compact ? new LinearLayout.LayoutParams(-1, 0, .58f)
+                    : new LinearLayout.LayoutParams(0, -1, .42f));
+            LinearLayout.LayoutParams size = compact ? new LinearLayout.LayoutParams(-1, 0, .42f)
+                    : new LinearLayout.LayoutParams(0, -1, .58f);
+            if (compact) size.topMargin = dp(8); else size.leftMargin = dp(12);
+            stage.setLayoutParams(size);
+        });
 
         watchBar = new LinearLayout(this); watchBar.setGravity(Gravity.CENTER_VERTICAL);
         watchBar.setBackgroundColor(0xdf2b2b2b); watchBar.setPadding(dp(12), 0, dp(8), 0);
@@ -359,7 +429,7 @@ public final class MainActivity extends ComponentActivity {
         video.addView(watchBar, bottom); watchBar.setVisibility(View.GONE);
 
         player = new Playback(this, mainSurface, insetSurface, this::updatePlayback);
-        setContentView(root);
+        showScreen(root);
         queryButton.requestFocusFromTouch();
         updateSelection();
         updatePlayback();
@@ -399,6 +469,7 @@ public final class MainActivity extends ComponentActivity {
                 boolean expired = failure instanceof Jellyfin.HttpFailure http && http.status == 401;
                 String error = failure instanceof Jellyfin.HttpFailure http && http.status == 403
                         ? "This account cannot access Live TV."
+                        : needsLocalNetworkPermission() ? getString(R.string.local_network_access)
                         : "Could not load channels. Open Server to retry.";
                 if (expired || replace) {
                     ui.post(() -> {
@@ -757,7 +828,7 @@ public final class MainActivity extends ComponentActivity {
                 } catch (Exception error) {
                     ui.post(() -> {
                         if (!destroyed && server == api && generation == guideGeneration
-                                && dialog.isShowing() && window[0] == from) entries.setText("Guide request failed.");
+                                && dialog.isShowing() && window[0] == from) entries.setText(R.string.guide_load_failed);
                     });
                 }
             });
@@ -772,10 +843,10 @@ public final class MainActivity extends ComponentActivity {
         Runnable load = () -> {
             cancel.run();
             long from = window[0];
-            caption.setText(clock.format(new Date(from)) + " – " + clock.format(new Date(from + step)));
+            caption.setText(getString(R.string.guide_time_range, clock.format(new Date(from)), clock.format(new Date(from + step))));
             List<Channels.Program> cached = epg.get(from, channel.id(), SystemClock.elapsedRealtime());
             if (cached != null) { entries.setText(scheduleText(cached, from)); return; }
-            entries.setText("Loading guide…");
+            entries.setText(R.string.guide_loading);
             ui.postDelayed(fetch, 150);
         };
         earlier.setOnClickListener(view -> {
@@ -801,12 +872,12 @@ public final class MainActivity extends ComponentActivity {
     private void serverDialog() {
         if (api == null) return;
         new AlertDialog.Builder(this).setTitle("Jellyfin server").setMessage(api.session.server())
-                .setPositiveButton("Refresh channels", (d, w) -> {
+                .setPositiveButton("Refresh channels", (d, w) -> requestLocalNetwork(() -> {
                     ++guideGeneration;
                     epg.clear(); noGuideUntil = guideCheckedUntil = guideBackoffUntil = 0;
                     refreshGuideRows(); scheduleGuide();
                     loadCatalog();
-                })
+                }))
                 .setNeutralButton("Sign out", (d, w) -> signOut(true))
                 .setNegativeButton("Close", null).show();
     }
@@ -945,7 +1016,8 @@ public final class MainActivity extends ComponentActivity {
 
         @Override public void onBindViewHolder(ChannelRow holder, int position) {
             Channels.Channel channel = getItem(position);
-            holder.title.setText((favorites.contains(channel.id()) ? "★  " : "") + channel.label());
+            String label = channel.label();
+            holder.title.setText(favorites.contains(channel.id()) ? getString(R.string.favorite_channel_label, label) : label);
             holder.guide.setText(guideLine(channel.id(), false));
         }
 

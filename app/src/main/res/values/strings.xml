@@ -1,0 +1,9 @@
+<resources>
+    <string name="login_required_fields">Enter a server and username.</string>
+    <string name="login_connecting">Connecting…</string>
+    <string name="local_network_access">Allow Local network access in Settings to connect to a Jellyfin server on your network.</string>
+    <string name="guide_load_failed">Guide request failed.</string>
+    <string name="guide_loading">Loading guide…</string>
+    <string name="guide_time_range">%1$s – %2$s</string>
+    <string name="favorite_channel_label">★&#160;&#160;%1$s</string>
+</resources>
