@@ -256,7 +256,13 @@ public final class MainActivity extends ComponentActivity {
         count.setPadding(dp(12), dp(8), dp(4), dp(8)); browser.addView(count);
         FrameLayout listArea = new FrameLayout(this);
         browser.addView(listArea, new LinearLayout.LayoutParams(-1, 0, 1));
-        list = new RecyclerView(this); list.setId(View.generateViewId());
+        list = new RecyclerView(this) {
+            @Override public boolean dispatchKeyEvent(KeyEvent event) {
+                if (handleRemoteKey(event)) return true;
+                return super.dispatchKeyEvent(event);
+            }
+        };
+        list.setId(View.generateViewId());
         list.setDescendantFocusability(ViewGroup.FOCUS_AFTER_DESCENDANTS);
         list.setHasFixedSize(true); list.setItemAnimator(null);
         list.setPreserveFocusAfterLayout(false);
@@ -776,7 +782,12 @@ public final class MainActivity extends ComponentActivity {
     }
 
     @Override public boolean onKeyDown(int key, KeyEvent event) {
-        if (api != null && !fullscreen) {
+        return handleRemoteKey(event) || super.onKeyDown(key, event);
+    }
+
+    private boolean handleRemoteKey(KeyEvent event) {
+        if (event.getAction() == KeyEvent.ACTION_DOWN && api != null && !fullscreen) {
+            int key = event.getKeyCode();
             if (key == KeyEvent.KEYCODE_PAGE_DOWN || key == KeyEvent.KEYCODE_CHANNEL_DOWN || key == KeyEvent.KEYCODE_MEDIA_FAST_FORWARD) {
                 page(50); return true;
             }
@@ -790,7 +801,7 @@ public final class MainActivity extends ComponentActivity {
             if (key == KeyEvent.KEYCODE_GUIDE) { scheduleDialog(); return true; }
             if (key == KeyEvent.KEYCODE_SEARCH) { searchDialog(); return true; }
         }
-        return super.onKeyDown(key, event);
+        return false;
     }
 
     private void back() {
