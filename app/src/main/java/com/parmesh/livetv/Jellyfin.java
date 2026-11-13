@@ -61,7 +61,7 @@ final class Jellyfin {
 
     private String authorization() {
         return "MediaBrowser Client=\"Jellyfin Live TV\", Device=\"Android TV\", DeviceId=\""
-                + session.device + "\", Version=\"0.1.0\""
+                + session.device + "\", Version=\"" + BuildConfig.VERSION_NAME + "\""
                 + (session.token.isEmpty() ? "" : ", Token=\"" + session.token + "\"");
     }
 
