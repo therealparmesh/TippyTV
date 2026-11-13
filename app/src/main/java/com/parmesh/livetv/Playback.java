@@ -41,6 +41,8 @@ final class Playback {
         String status = "";
         boolean fallback;
         Runnable bufferTimeout;
+
+        boolean active() { return channel != null && !status.startsWith("Unable"); }
     }
 
     Playback(Context context, PlayerView mainView, PlayerView insetView, Runnable changed) {
@@ -62,12 +64,18 @@ final class Playback {
     void tune(Jellyfin api, Channels.Channel channel, boolean inset) {
         Slot target = inset ? secondary : primary;
         Slot other = inset ? primary : secondary;
-        if (other.channel != null && other.channel.id().equals(channel.id()) && !other.status.startsWith("Unable")) {
-            if (!inset) swap();
-            return;
+        if (other.channel != null && other.channel.id().equals(channel.id())) {
+            if (other.active()) {
+                if (!inset) swap();
+                return;
+            }
+            if (inset) {
+                tune(api, channel, false);
+                return;
+            }
+            stop(other);
         }
-        if (target.channel != null && target.channel.id().equals(channel.id())
-                && (target.player != null || target.status.startsWith("Tuning"))) return;
+        if (target.active() && target.channel.id().equals(channel.id())) return;
         request(target, api, channel, false);
     }
 
