@@ -21,6 +21,7 @@ final class Jellyfin {
     private static final MediaType JSON = MediaType.get("application/json");
     private static final RequestBody EMPTY = RequestBody.create(new byte[0], null);
     private static final OkHttpClient HTTP = new OkHttpClient.Builder()
+            .dns(new LocalDns())
             .connectTimeout(6, TimeUnit.SECONDS).readTimeout(15, TimeUnit.SECONDS)
             .callTimeout(24, TimeUnit.SECONDS).followRedirects(false).followSslRedirects(false).build();
 
