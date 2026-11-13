@@ -6,9 +6,9 @@ A standalone, Darcula-colored Android TV and Fire OS client for Jellyfin Live TV
 
 1. Sideload the APK on an Android-based Fire TV or Android TV device (Android 6/API 23 or later).
 2. Open **Jellyfin Live TV** and enter your server address. A `.local` hostname works when the server advertises it over multicast DNS on your LAN. Choose **Quick Connect** to approve the TV from Jellyfin on a phone or browser, or choose **Use a password**. The app stores the session token with Android Keystore protection.
-3. Select a channel to tune. **Watch** expands the video. **Back** returns to the list.
+3. Press Select on a channel to play it. Press Right from the channel list to reach playback controls, then choose **Full screen**. **Back** returns to the selected channel.
 4. Hold **Select** on another channel, then choose **Play in inset**. The inset uses half the width and height of the playback area and stays muted. **Swap** moves audio and the large picture to the other channel. **Close inset** releases the second tuner.
-5. **Search** accepts names and channel numbers. **Favorites** uses Jellyfin favorites. **Jump** goes to a letter, first/last, or ±50 channels. Page/channel and fast-forward/rewind keys also skip 50 where the remote sends those keys.
+5. **Search** accepts names and channel numbers. **Favorites** uses Jellyfin favorites. **Jump** goes to a letter or to the first or last channel. Use **−50** and **+50** to move through long lineups. Page, channel, and fast-forward or rewind buttons also skip 50 channels where supported.
 6. **Guide** shows the selected channel’s schedule. **Earlier** and **Later** step through three-hour windows.
 
 Direct playback uses Media3/ExoPlayer for HLS and MPEG-TS. A compatible Jellyfin HLS stream is attempted once after a playback error or prolonged buffering. You can also select **Try compatible stream** from channel actions. Conversion depends on server permissions and the source feed. Two-channel viewing stays within the app and requires two available decoder/tuner slots.

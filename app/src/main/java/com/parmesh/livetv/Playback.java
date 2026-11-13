@@ -24,6 +24,17 @@ import java.util.concurrent.atomic.AtomicInteger;
 
 @OptIn(markerClass = UnstableApi.class)
 final class Playback {
+    enum Status {
+        IDLE(0), TUNING(R.string.tuning), COMPATIBLE(R.string.trying_compatible), BUFFERING(R.string.buffering),
+        LIVE(R.string.live), LIVE_COMPATIBLE(R.string.live_compatible),
+        TUNE_FAILED(R.string.tune_failed), STREAM_FAILED(R.string.stream_failed), INSET_FAILED(R.string.inset_failed);
+
+        final int label;
+        Status(int label) { this.label = label; }
+        boolean live() { return this == LIVE || this == LIVE_COMPATIBLE; }
+        boolean failed() { return this == TUNE_FAILED || this == STREAM_FAILED || this == INSET_FAILED; }
+    }
+
     private final Handler ui = new Handler(Looper.getMainLooper());
     private final Context context;
     private final PlayerView mainView;
@@ -39,11 +50,11 @@ final class Playback {
         Jellyfin.Stream stream;
         ExoPlayer player;
         Channels.Channel channel;
-        String status = "";
+        Status status = Status.IDLE;
         boolean fallback;
         Runnable bufferTimeout;
 
-        boolean active() { return channel != null && !status.startsWith("Unable"); }
+        boolean active() { return channel != null && !status.failed(); }
     }
 
     Playback(Context context, PlayerView mainView, PlayerView insetView, Runnable changed) {
@@ -55,8 +66,8 @@ final class Playback {
 
     Channels.Channel primary() { return primary.channel; }
     Channels.Channel secondary() { return secondary.channel; }
-    String primaryStatus() { return primary.status; }
-    String secondaryStatus() { return secondary.status; }
+    Status primaryStatus() { return primary.status; }
+    Status secondaryStatus() { return secondary.status; }
     boolean hasVideo() {
         return (primary.player != null && primary.player.isPlaying())
                 || (secondary.player != null && secondary.player.isPlaying());
@@ -92,7 +103,7 @@ final class Playback {
         slot.api = api;
         slot.channel = channel;
         slot.fallback = fallback;
-        slot.status = fallback ? "Trying compatible stream…" : "Tuning…";
+        slot.status = fallback ? Status.COMPATIBLE : Status.TUNING;
         changed.run();
         boolean small = slot == secondary;
         slot.tuner.execute(() -> {
@@ -107,7 +118,7 @@ final class Playback {
                     if (!fallback && !(error instanceof Jellyfin.HttpFailure http && (http.status == 401 || http.status == 403))) {
                         request(slot, api, channel, true);
                     } else {
-                        slot.status = "Unable to tune. Select the channel to retry.";
+                        slot.status = Status.TUNE_FAILED;
                         changed.run();
                     }
                 });
@@ -153,8 +164,8 @@ final class Playback {
                 if (state == Player.STATE_ENDED) {
                     failed(slot, generation);
                 } else {
-                    slot.status = state == Player.STATE_READY ? (stream.converted() ? "LIVE · compatible stream" : "LIVE · direct")
-                            : state == Player.STATE_BUFFERING ? "Buffering…" : slot.status;
+                    slot.status = state == Player.STATE_READY ? (stream.converted() ? Status.LIVE_COMPATIBLE : Status.LIVE)
+                            : state == Player.STATE_BUFFERING ? Status.BUFFERING : slot.status;
                     changed.run();
                 }
             }
@@ -167,7 +178,7 @@ final class Playback {
                 if (slot.generation != generation) return;
                 // Decoder exhaustion on the second player shouldn't interrupt the first.
                 if (slot == secondary && error.errorCode == PlaybackException.ERROR_CODE_DECODER_INIT_FAILED) {
-                    finishWithError(slot, "Unable to play inset on this device.");
+                    finishWithError(slot, Status.INSET_FAILED);
                 } else {
                     failed(slot, generation);
                 }
@@ -184,15 +195,15 @@ final class Playback {
     private void failed(Slot slot, long generation) {
         if (slot.generation != generation) return;
         if (!slot.fallback) request(slot, slot.api, slot.channel, true);
-        else finishWithError(slot, "Unable to play this stream. Select the channel to retry.");
+        else finishWithError(slot, Status.STREAM_FAILED);
     }
 
-    private void finishWithError(Slot slot, String message) {
+    private void finishWithError(Slot slot, Status status) {
         ++slot.generation;
         Jellyfin.Stream old = detach(slot);
         Jellyfin api = slot.api;
         if (old != null) slot.tuner.execute(() -> api.close(old));
-        slot.status = message;
+        slot.status = status;
         changed.run();
     }
 
@@ -244,7 +255,7 @@ final class Playback {
         Jellyfin.Stream stream = detach(slot);
         Jellyfin api = slot.api;
         slot.channel = null;
-        slot.status = "";
+        slot.status = Status.IDLE;
         if (stream != null) slot.tuner.execute(() -> api.close(stream));
     }
 

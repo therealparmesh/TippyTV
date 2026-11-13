@@ -36,6 +36,7 @@ final class SignInScreen {
     private Runnable poll;
     private int generation;
     private boolean onServerPage;
+    private boolean changingServer;
 
     SignInScreen(MainActivity activity, ExecutorService accounts, String device, String server) {
         this.activity = activity;
@@ -51,10 +52,14 @@ final class SignInScreen {
         EditText address = field(R.string.server_address, InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_URI);
         address.setText(server);
         address.setSelectAllOnFocus(true);
-        address.setImeOptions(EditorInfo.IME_ACTION_GO | EditorInfo.IME_FLAG_NO_EXTRACT_UI);
+        address.setImeOptions(EditorInfo.IME_ACTION_NEXT | EditorInfo.IME_FLAG_NO_EXTRACT_UI);
         Button quick = action(R.string.quick_connect, true, null);
         Button password = action(R.string.use_password, false, null);
-        connectField(address, quick);
+        address.setOnEditorActionListener((view, action, event) -> {
+            if (action != EditorInfo.IME_ACTION_NEXT || !quick.isEnabled()) return false;
+            if (rememberAddress(address)) quick.requestFocus();
+            return true;
+        });
         quick.setEnabled(!signingOut);
         password.setEnabled(!signingOut);
         quick.setOnClickListener(view -> {
@@ -65,13 +70,19 @@ final class SignInScreen {
             if (rememberAddress(address)) passwordPage();
         });
         status(message, false);
-        present(signingOut ? null : server.isBlank() ? address : quick);
+        present(signingOut ? null : server.isBlank() || changingServer ? address : quick);
+        changingServer = false;
     }
 
     boolean back() {
         if (onServerPage) return false;
         show("", false);
         return true;
+    }
+
+    private void changeServer() {
+        changingServer = true;
+        show("", false);
     }
 
     void cancel() {
@@ -102,7 +113,7 @@ final class SignInScreen {
     private void passwordPage() {
         cancel();
         onServerPage = false;
-        page(R.string.password_heading, R.string.password_description);
+        page(R.string.password_heading, 0);
         EditText user = field(R.string.username, InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS);
         EditText password = field(R.string.password, InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_PASSWORD);
         user.setText(username);
@@ -111,7 +122,7 @@ final class SignInScreen {
         password.setImeOptions(EditorInfo.IME_ACTION_DONE | EditorInfo.IME_FLAG_NO_EXTRACT_UI);
         Button connect = action(R.string.sign_in, true, null);
         connectField(password, connect);
-        action(R.string.change_server, false, this::back);
+        action(R.string.change_server, false, this::changeServer);
         connect.setOnClickListener(view -> {
             username = user.getText().toString().trim();
             if (username.isBlank()) {
@@ -158,14 +169,14 @@ final class SignInScreen {
         TextView code = activity.text("", 40, MainActivity.TEXT);
         code.setTypeface(Typeface.MONOSPACE, Typeface.BOLD);
         code.setGravity(Gravity.CENTER);
-        code.setLetterSpacing(.16f);
+        code.setLetterSpacing(.14f);
         code.setVisibility(View.GONE);
         code.setBackground(activity.box(MainActivity.BG, 0, 12));
         card.addView(code, spaced(76, 14));
         Button retry = action(R.string.new_code, true, this::startCode);
         retry.setVisibility(View.GONE);
         action(R.string.use_password, false, this::passwordPage);
-        Button back = action(R.string.change_server, false, this::back);
+        Button back = action(R.string.change_server, false, this::changeServer);
         present(back);
         status(activity.getString(R.string.requesting_code), true);
         int request = generation;
@@ -255,9 +266,9 @@ final class SignInScreen {
         TextView title = activity.text(activity.getString(heading), 29, MainActivity.TEXT);
         title.setTypeface(Typeface.create("sans-serif-medium", Typeface.NORMAL));
         card.addView(title);
-        card.addView(activity.text(activity.getString(description), 15, MainActivity.DIM), spaced(-2, 6));
+        if (description != 0) card.addView(activity.text(activity.getString(description), 16, MainActivity.DIM), spaced(-2, 6));
         if (!onServerPage) {
-            TextView address = activity.text(server, 13, MainActivity.ACCENT);
+            TextView address = activity.text(server, 15, MainActivity.ACCENT);
             address.setSingleLine();
             address.setEllipsize(TextUtils.TruncateAt.MIDDLE);
             card.addView(address, spaced(-2, 5));
@@ -297,15 +308,17 @@ final class SignInScreen {
     }
 
     private EditText field(int label, int type) {
-        card.addView(activity.text(activity.getString(label), 13, MainActivity.DIM), spaced(-2, 13));
         EditText edit = activity.edit(activity.getString(label), type);
         edit.setId(View.generateViewId());
+        TextView caption = activity.text(activity.getString(label), 15, MainActivity.DIM);
+        caption.setLabelFor(edit.getId());
+        card.addView(caption, spaced(-2, 13));
         card.addView(edit, spaced(48, 4));
         return edit;
     }
 
     private Button action(int label, boolean primary, Runnable listener) {
-        Button button = activity.button(activity.getString(label), listener);
+        Button button = activity.button(label, listener);
         if (primary) button.setBackground(activity.focusBackground(MainActivity.PRIMARY));
         card.addView(button, spaced(44, 8));
         return button;

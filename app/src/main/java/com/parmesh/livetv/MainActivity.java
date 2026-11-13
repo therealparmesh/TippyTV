@@ -1,7 +1,6 @@
 package com.parmesh.livetv;
 
 import android.Manifest;
-import android.app.AlertDialog;
 import android.content.pm.PackageManager;
 import android.content.res.ColorStateList;
 import android.graphics.Typeface;
@@ -24,7 +23,6 @@ import android.widget.EditText;
 import android.widget.FrameLayout;
 import android.widget.HorizontalScrollView;
 import android.widget.LinearLayout;
-import android.widget.ScrollView;
 import android.widget.TextView;
 import android.widget.Toast;
 import androidx.activity.ComponentActivity;
@@ -74,6 +72,7 @@ public final class MainActivity extends ComponentActivity {
     private long favoriteRevision;
     private final Set<String> pendingFavorites = new HashSet<>();
     private final DateFormat clock = DateFormat.getTimeInstance(DateFormat.SHORT);
+    private final DateFormat guideDate = DateFormat.getDateInstance(DateFormat.MEDIUM);
     private SessionStore store;
     private SignInScreen signIn;
     private Jellyfin api;
@@ -87,7 +86,7 @@ public final class MainActivity extends ComponentActivity {
     private String loadProblem;
     private boolean favoritesOnly, catalogBusy, guideBusy, fullscreen, foreground, destroyed, signingOut;
     private volatile int visibleGeneration;
-    private int expectedCount, focusedPosition;
+    private int focusedPosition;
     private boolean resetSelection;
     private String pendingJump;
     private long guideWindow = Long.MIN_VALUE;
@@ -98,8 +97,8 @@ public final class MainActivity extends ComponentActivity {
     private PlayerView mainSurface, insetSurface;
     private LinearLayout shell, stage, watchBar;
     private TextView count, empty, selectedName, programText, mainMessage, insetMessage, watchTitle, watchStatus;
-    private Button filterButton, queryButton, watchButton, insetButton, swapButton, closeInset, starButton;
-    private Button watchSwap, watchClose;
+    private Button filterButton, queryButton, jumpButton, guideButton, watchButton, insetButton, swapButton, closeInset, starButton;
+    private Button watchSwap, watchClose, watchRetry;
     private Button returnToChannels;
     private Consumer<Boolean> pendingNetworkAction;
     private final ActivityResultLauncher<String> networkPermission = registerForActivityResult(
@@ -131,7 +130,9 @@ public final class MainActivity extends ComponentActivity {
         bars.setSystemBarsBehavior(WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE);
         bars.hide(WindowInsetsCompat.Type.systemBars());
         store = new SessionStore(this);
-        setContentView(text("Opening Jellyfin Live TV…", 18, ACCENT));
+        TextView opening = text(getString(R.string.opening), 19, TEXT);
+        opening.setGravity(Gravity.CENTER);
+        setContentView(opening);
         accounts.execute(() -> {
             Jellyfin.Session saved = store.read();
             ui.post(() -> {
@@ -176,6 +177,16 @@ public final class MainActivity extends ComponentActivity {
         return bar;
     }
 
+    private void returnToSelectedChannel() {
+        if (adapter.getItemCount() == 0) queryButton.requestFocusFromTouch();
+        else jump(Channels.jumpPage(focusedPosition, adapter.getItemCount(), 0));
+    }
+
+    View defaultBrowserFocus() {
+        if (fullscreen) return returnToChannels;
+        return queryButton;
+    }
+
     TextView text(String value, int size, int color) {
         TextView view = new TextView(this);
         view.setText(value); view.setTextSize(size); view.setTextColor(color);
@@ -198,9 +209,13 @@ public final class MainActivity extends ComponentActivity {
         return states;
     }
 
+    Button button(int label, Runnable action) {
+        return button(getString(label), action);
+    }
+
     Button button(String label, Runnable action) {
         Button v = new Button(this);
-        v.setText(label); v.setTextSize(13); v.setAllCaps(false);
+        v.setText(label); v.setTextSize(15); v.setAllCaps(false);
         v.setTextColor(new ColorStateList(new int[][]{new int[]{-android.R.attr.state_enabled}, new int[0]},
                 new int[]{0xff858991, TEXT}));
         v.setBackground(focusBackground(BAR)); v.setMinWidth(0); v.setMinimumWidth(0);
@@ -211,8 +226,8 @@ public final class MainActivity extends ComponentActivity {
     }
 
     private void addButton(LinearLayout parent, Button v) {
-        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(-2, dp(38));
-        lp.rightMargin = dp(6); parent.addView(v, lp);
+        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(-2, dp(42));
+        lp.rightMargin = dp(8); parent.addView(v, lp);
     }
 
     LinearLayout vertical() {
@@ -253,7 +268,8 @@ public final class MainActivity extends ComponentActivity {
     private void connected(Jellyfin.Session session) {
         api = new Jellyfin(session);
         root = new FrameLayout(this); root.setBackgroundColor(BG);
-        shell = vertical(); shell.setPadding(dp(28), dp(18), dp(28), dp(18));
+        shell = vertical();
+        shell.setPadding(dp(30), dp(16), dp(30), dp(20));
         root.addView(shell, new FrameLayout.LayoutParams(-1, -1));
         LinearLayout header = new LinearLayout(this); header.setGravity(Gravity.CENTER_VERTICAL);
         TextView brand = text(getString(R.string.app_name), 22, TEXT);
@@ -261,13 +277,15 @@ public final class MainActivity extends ComponentActivity {
         brand.setSingleLine();
         brand.setEllipsize(TextUtils.TruncateAt.END);
         header.addView(brand, new LinearLayout.LayoutParams(0, -2, 1));
-        queryButton = button("Search", this::searchDialog); addButton(header, queryButton);
-        filterButton = button("Favorites", () -> {
+        queryButton = button(R.string.search, this::searchDialog); addButton(header, queryButton);
+        filterButton = button(R.string.favorites, () -> {
             favoritesOnly = !favoritesOnly; renderFilter(true);
         }); addButton(header, filterButton);
-        addButton(header, button("Jump", this::jumpDialog));
-        addButton(header, button("Guide", this::scheduleDialog));
-        addButton(header, button("Server", this::serverDialog));
+        jumpButton = button(R.string.jump, this::jumpDialog);
+        guideButton = button(R.string.guide, this::scheduleDialog);
+        addButton(header, jumpButton);
+        addButton(header, guideButton);
+        addButton(header, button(R.string.server, this::serverDialog));
         shell.addView(scrollBar(header), new LinearLayout.LayoutParams(-1, dp(50)));
 
         LinearLayout body = new LinearLayout(this);
@@ -275,13 +293,19 @@ public final class MainActivity extends ComponentActivity {
         content.topMargin = dp(8); shell.addView(body, content);
         LinearLayout browser = vertical(); browser.setBackground(box(PANEL, EDGE, 12));
         body.addView(browser, new LinearLayout.LayoutParams(0, -1, .42f));
-        count = text("Loading channels…", 14, DIM);
+        count = text("", 15, DIM);
+        count.setSingleLine();
+        count.setEllipsize(TextUtils.TruncateAt.END);
         count.setPadding(dp(12), dp(8), dp(4), dp(8)); browser.addView(count);
         FrameLayout listArea = new FrameLayout(this);
         browser.addView(listArea, new LinearLayout.LayoutParams(-1, 0, 1));
         list = new RecyclerView(this) {
             @Override public boolean dispatchKeyEvent(KeyEvent event) {
                 if (event.getAction() == KeyEvent.ACTION_UP && isPageKey(event.getKeyCode())) return true;
+                if (event.getAction() == KeyEvent.ACTION_DOWN && event.getKeyCode() == KeyEvent.KEYCODE_DPAD_RIGHT
+                        && watchButton != null && watchButton.isEnabled()) {
+                    return watchButton.requestFocus() || super.dispatchKeyEvent(event);
+                }
                 return handleRemoteKey(event) || super.dispatchKeyEvent(event);
             }
         };
@@ -318,7 +342,7 @@ public final class MainActivity extends ComponentActivity {
         Button next = button("+50", () -> page(50));
         next.setContentDescription(getString(R.string.skip_forward));
         addButton(pager, next);
-        TextView channelHelp = text(getString(R.string.channel_actions_hint), 12, DIM);
+        TextView channelHelp = text(getString(R.string.channel_actions_hint), 14, DIM);
         channelHelp.setGravity(Gravity.CENTER_VERTICAL | Gravity.END);
         channelHelp.setSingleLine();
         channelHelp.setEllipsize(TextUtils.TruncateAt.END);
@@ -334,12 +358,15 @@ public final class MainActivity extends ComponentActivity {
         stage = vertical();
         LinearLayout.LayoutParams stageSize = new LinearLayout.LayoutParams(0, -1, .58f);
         stageSize.leftMargin = dp(12); body.addView(stage, stageSize);
-        video = new FrameLayout(this); video.setBackgroundColor(0xff171719);
+        video = new FrameLayout(this);
+        video.setBackground(box(0xff171719, 0, 12));
         stage.addView(video, new LinearLayout.LayoutParams(-1, 0, 1));
         mainSurface = new PlayerView(this); mainSurface.setUseController(false);
         mainSurface.setFocusable(false); mainSurface.setKeepContentOnPlayerReset(false);
         video.addView(mainSurface, new FrameLayout.LayoutParams(-1, -1));
-        mainMessage = text("", 16, TEXT); mainMessage.setGravity(Gravity.CENTER);
+        mainMessage = text("", 18, TEXT);
+        mainMessage.setGravity(Gravity.CENTER);
+        mainMessage.setPadding(dp(22), dp(12), dp(22), dp(12));
         video.addView(mainMessage, new FrameLayout.LayoutParams(-1, -1));
         inset = new FrameLayout(this); inset.setBackground(box(0xff171719, ACCENT, 0));
         inset.setContentDescription(getString(R.string.muted_inset));
@@ -347,29 +374,37 @@ public final class MainActivity extends ComponentActivity {
         insetSurface = (PlayerView) getLayoutInflater().inflate(R.layout.inset_player, inset, false);
         insetSurface.setFocusable(false);
         inset.addView(insetSurface, new FrameLayout.LayoutParams(-1, -1));
-        insetMessage = text("", 12, TEXT); insetMessage.setGravity(Gravity.CENTER);
+        insetMessage = text("", 14, TEXT); insetMessage.setGravity(Gravity.CENTER);
         inset.addView(insetMessage, new FrameLayout.LayoutParams(-1, -1));
         video.addView(inset, new FrameLayout.LayoutParams(0, 0, Gravity.BOTTOM | Gravity.END));
         video.addOnLayoutChangeListener((v, l, t, r, b, ol, ot, or, ob) -> {
             if (r-l == or-ol && b-t == ob-ot) return;
             FrameLayout.LayoutParams p = (FrameLayout.LayoutParams) inset.getLayoutParams();
             p.width = (r-l) / 2; p.height = (b-t) / 2;
-            p.rightMargin = dp(10); p.bottomMargin = dp(fullscreen ? 56 : 10);
+            p.rightMargin = dp(12); p.bottomMargin = dp(fullscreen ? 64 : 12);
             inset.setLayoutParams(p);
         });
 
-        selectedName = text("Select a channel", 17, TEXT);
+        selectedName = text("", 20, TEXT);
+        selectedName.setTypeface(Typeface.create("sans-serif-medium", Typeface.NORMAL));
         selectedName.setSingleLine(); selectedName.setEllipsize(TextUtils.TruncateAt.END);
         selectedName.setPadding(0, dp(7), 0, 0); stage.addView(selectedName);
-        programText = text("", 13, DIM); programText.setMaxLines(2); programText.setEllipsize(TextUtils.TruncateAt.END);
-        stage.addView(programText, new LinearLayout.LayoutParams(-1, dp(37)));
+        programText = text("", 15, DIM); programText.setMaxLines(2); programText.setEllipsize(TextUtils.TruncateAt.END);
+        stage.addView(programText, new LinearLayout.LayoutParams(-1, dp(43)));
         LinearLayout controls = new LinearLayout(this); controls.setGravity(Gravity.CENTER_VERTICAL);
-        watchButton = button("Watch", () -> {
-            if (player.primary() != null) setFullscreen(true);
+        watchButton = button(R.string.play_channel, () -> {
+            if (selected == null) return;
+            if (!isPlayingSelection() || player.primaryStatus().failed()) tune(false);
+            else setFullscreen(true);
         }); addButton(controls, watchButton);
-        insetButton = button("Add inset", () -> tune(true)); addButton(controls, insetButton);
-        swapButton = button("Swap", () -> player.swap()); addButton(controls, swapButton);
-        closeInset = button("Close inset", () -> player.stopInset()); addButton(controls, closeInset);
+        watchButton.setOnKeyListener((view, key, event) -> {
+            if (event.getAction() != KeyEvent.ACTION_DOWN || key != KeyEvent.KEYCODE_DPAD_LEFT) return false;
+            returnToSelectedChannel();
+            return true;
+        });
+        insetButton = button(R.string.play_in_inset, () -> tune(true)); addButton(controls, insetButton);
+        swapButton = button(R.string.swap, () -> player.swap()); addButton(controls, swapButton);
+        closeInset = button(R.string.close_inset, () -> closeInset(watchButton)); addButton(controls, closeInset);
         starButton = button("☆", this::favoriteSelected); addButton(controls, starButton);
         stage.addView(scrollBar(controls));
 
@@ -389,17 +424,26 @@ public final class MainActivity extends ComponentActivity {
         watchBar.setBackgroundColor(0xdf2b2b2b); watchBar.setPadding(dp(12), 0, dp(8), 0);
         watchTitle = text("", 16, TEXT); watchTitle.setSingleLine(); watchTitle.setEllipsize(TextUtils.TruncateAt.END);
         watchBar.addView(watchTitle, new LinearLayout.LayoutParams(0, -2, 1));
-        watchStatus = text("", 12, DIM); watchBar.addView(watchStatus);
-        returnToChannels = button("Channels", () -> setFullscreen(false));
+        watchStatus = text("", 14, DIM);
+        watchStatus.setSingleLine();
+        watchStatus.setEllipsize(TextUtils.TruncateAt.END);
+        watchStatus.setMaxWidth(dp(145));
+        watchStatus.setPadding(dp(8), 0, dp(12), 0);
+        watchBar.addView(watchStatus);
+        returnToChannels = button(R.string.channels, () -> setFullscreen(false));
         addButton(watchBar, returnToChannels);
-        watchSwap = button("Swap", () -> player.swap()); addButton(watchBar, watchSwap);
-        watchClose = button("Close inset", () -> player.stopInset()); addButton(watchBar, watchClose);
-        FrameLayout.LayoutParams bottom = new FrameLayout.LayoutParams(-1, dp(46), Gravity.BOTTOM);
-        video.addView(watchBar, bottom); watchBar.setVisibility(View.GONE);
+        watchRetry = button(R.string.retry, () -> player.tune(api, player.primary(), false));
+        addButton(watchBar, watchRetry);
+        watchSwap = button(R.string.swap, () -> player.swap()); addButton(watchBar, watchSwap);
+        watchClose = button(R.string.close_inset, () -> closeInset(returnToChannels)); addButton(watchBar, watchClose);
+        FrameLayout.LayoutParams bottom = new FrameLayout.LayoutParams(-1, dp(54), Gravity.BOTTOM);
+        video.addView(scrollBar(watchBar), bottom);
+        watchBar.setVisibility(View.GONE);
 
         player = new Playback(this, mainSurface, insetSurface, this::updatePlayback);
         showScreen(root);
         queryButton.requestFocusFromTouch();
+        updateCount();
         updateSelection();
         updatePlayback();
         loadCatalog();
@@ -415,12 +459,12 @@ public final class MainActivity extends ComponentActivity {
         updateCount();
         catalog.execute(() -> {
             var accumulated = new LinkedHashMap<String, Channels.Channel>();
-            int cursor = 0, total = -1, pages = 0;
+            int cursor = 0, pages = 0;
             try {
                 while (catalogGeneration == generation) {
                     Jellyfin.Page page = server.channels(cursor, PAGE);
                     if (catalogGeneration != generation) return;
-                    total = page.total();
+                    int total = page.total();
                     int priorSize = accumulated.size();
                     for (Channels.Channel c : page.channels()) accumulated.put(c.id(), c);
                     cursor += page.consumed();
@@ -429,7 +473,7 @@ public final class MainActivity extends ComponentActivity {
                         throw new java.io.IOException("Channel paging did not advance.");
                     }
                     if (done || (!replace && pages++ % 3 == 0)) {
-                        publishCatalog(server, generation, favoriteBaseline, accumulated, total, done, null);
+                        publishCatalog(server, generation, favoriteBaseline, accumulated, done, null);
                     }
                     if (done) return;
                 }
@@ -437,9 +481,9 @@ public final class MainActivity extends ComponentActivity {
             } catch (Exception failure) {
                 boolean expired = failure instanceof Jellyfin.HttpFailure http && http.status == 401;
                 String error = failure instanceof Jellyfin.HttpFailure http && http.status == 403
-                        ? "This account cannot access Live TV."
+                        ? getString(R.string.no_live_tv_access)
                         : needsLocalNetworkPermission() ? getString(R.string.local_network_access)
-                        : "Could not load channels. Open Server to retry.";
+                        : getString(R.string.channels_load_failed);
                 if (expired || replace) {
                     ui.post(() -> {
                         if (destroyed || api != server || catalogGeneration != generation) return;
@@ -449,17 +493,17 @@ public final class MainActivity extends ComponentActivity {
                         updateCount();
                         toast(loadProblem);
                     });
-                } else publishCatalog(server, generation, favoriteBaseline, accumulated, total, true, error);
+                } else publishCatalog(server, generation, favoriteBaseline, accumulated, true, error);
             }
         });
     }
 
     private void publishCatalog(Jellyfin server, long generation, long favoriteBaseline, Map<String, Channels.Channel> channels,
-                                int total, boolean done, String error) {
+                                boolean done, String error) {
         List<Channels.Channel> snapshot = List.copyOf(channels.values());
         ui.post(() -> {
             if (destroyed || api != server || catalogGeneration != generation) return;
-            all = snapshot; expectedCount = total;
+            all = snapshot;
             catalogBusy = !done; loadProblem = error;
             if (done && error == null) {
                 favoriteOverrides.values().removeIf(edit -> edit.revision() <= favoriteBaseline);
@@ -491,8 +535,8 @@ public final class MainActivity extends ComponentActivity {
         Set<String> stars = favorites;
         boolean starred = favoritesOnly;
         String term = query;
-        queryButton.setText(term.isBlank() ? "Search" : "Search •");
-        filterButton.setText(starred ? "Show all" : "Favorites");
+        queryButton.setText(term.isBlank() ? R.string.search : R.string.search_active);
+        filterButton.setText(starred ? R.string.all_channels : R.string.favorites);
         search.execute(() -> {
             if (generation != visibleGeneration) return;
             List<Channels.Channel> filtered = Channels.filter(channels, stars, starred, term);
@@ -504,6 +548,7 @@ public final class MainActivity extends ComponentActivity {
                     jumps = index;
                     int position = selected == null ? -1 : Channels.indexOf(filtered, selected.id());
                     if (filtered.isEmpty()) {
+                        if (list.hasFocus()) (starred && term.isBlank() ? filterButton : queryButton).requestFocusFromTouch();
                         selected = null; pendingJump = null; focusedPosition = 0;
                     } else if (resetSelection || pendingJump != null || (position < 0 && list.hasFocus())) {
                         jump(resetSelection ? 0 : position >= 0 ? position
@@ -523,53 +568,68 @@ public final class MainActivity extends ComponentActivity {
 
     private void updateCount() {
         int n = adapter.getItemCount();
-        String label = n + (favoritesOnly ? (n == 1 ? " favorite" : " favorites") : (n == 1 ? " channel" : " channels"));
-        if (catalogBusy) label += " · loading " + all.size() + (expectedCount > 0 ? "/" + expectedCount : "");
-        else if (loadProblem != null && n > 0) label += " · partial list";
+        if (jumpButton.hasFocus() && n == 0) queryButton.requestFocusFromTouch();
+        String label = getResources().getQuantityString(favoritesOnly ? R.plurals.favorite_count : R.plurals.channel_count, n, n);
+        if (catalogBusy) label = getString(R.string.loading_channel_count, label);
+        else if (loadProblem != null && n > 0) label = getString(R.string.partial_channel_count, label);
+        else if (!query.isBlank()) label = getString(R.string.search_channel_count, label, query);
         count.setText(label);
+        jumpButton.setEnabled(n > 0);
         empty.setVisibility(n == 0 ? View.VISIBLE : View.GONE);
-        empty.setText(loadProblem != null ? loadProblem : catalogBusy ? "Loading channels…"
-                : favoritesOnly ? "No matching favorites" : query.isBlank() ? "No channels available" : "No matching channels");
+        empty.setText(loadProblem != null ? loadProblem : getString(catalogBusy ? R.string.loading_channels
+                : !query.isBlank() ? R.string.no_matching_channels
+                : favoritesOnly ? R.string.no_favorites : R.string.no_channels));
     }
 
     private void searchDialog() {
-        EditText field = edit("Channel name or number", InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS);
-        field.setText(query); field.setSelectAllOnFocus(true);
-        LinearLayout wrapper = vertical();
-        wrapper.setPadding(dp(24), dp(12), dp(24), dp(8));
-        wrapper.addView(field, new LinearLayout.LayoutParams(-1, dp(48)));
-        AlertDialog dialog = new AlertDialog.Builder(this).setTitle("Find a channel").setView(wrapper)
-                .setPositiveButton("Search", (d, w) -> applySearch(field.getText().toString()))
-                .setNeutralButton("Clear", (d, w) -> applySearch(""))
-                .setNegativeButton("Cancel", null).create();
+        EditText field = edit(getString(R.string.search_hint), InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS);
+        field.setText(query);
+        field.setSelectAllOnFocus(true);
+        field.setMinimumHeight(dp(52));
         field.setImeOptions(EditorInfo.IME_ACTION_SEARCH | EditorInfo.IME_FLAG_NO_EXTRACT_UI);
-        field.setOnEditorActionListener((v, action, event) -> {
-            if (action == EditorInfo.IME_ACTION_SEARCH) {
-                applySearch(field.getText().toString()); dialog.dismiss(); return true;
-            }
-            return false;
+        TvDialog dialog = new TvDialog(this, getString(R.string.find_channel));
+        dialog.add(field, 16);
+        LinearLayout actions = new LinearLayout(this);
+        Button submit = dialog.action(R.string.search, () -> applySearch(field.getText().toString()));
+        addButton(actions, submit);
+        if (!query.isBlank()) addButton(actions, dialog.action(R.string.clear_search, () -> applySearch("")));
+        addButton(actions, button(R.string.cancel, dialog::dismiss));
+        dialog.add(actions, 12);
+        field.setOnEditorActionListener((view, action, event) -> {
+            if (action != EditorInfo.IME_ACTION_SEARCH) return false;
+            submit.performClick();
+            return true;
         });
-        dialog.show();
-        field.requestFocusFromTouch();
-        WindowCompat.getInsetsController(dialog.getWindow(), field).show(WindowInsetsCompat.Type.ime());
+        dialog.show(field);
+        WindowCompat.getInsetsController(dialog.window(), field).show(WindowInsetsCompat.Type.ime());
     }
 
     private void applySearch(String value) { query = value.trim(); renderFilter(true); }
 
     private void jumpDialog() {
         if (adapter.getItemCount() == 0) return;
-        List<String> labels = new ArrayList<>(List.of("First channel", "Back 50", "Forward 50", "Last channel"));
-        labels.addAll(jumps.keySet());
-        new AlertDialog.Builder(this).setTitle("Jump to channel").setItems(labels.toArray(new String[0]), (d, i) -> {
-            if (i == 0) jump(0);
-            else if (i == 1) page(-50);
-            else if (i == 2) page(50);
-            else if (i == 3) jump(adapter.getItemCount() - 1);
-            else {
-                Integer position = jumps.get(labels.get(i));
-                if (position != null) jump(position);
+        TvDialog dialog = new TvDialog(this, getString(R.string.jump_to_channel));
+        LinearLayout edges = new LinearLayout(this);
+        Button first = dialog.action(R.string.first_channel, () -> jump(0));
+        addButton(edges, first);
+        addButton(edges, dialog.action(R.string.last_channel, () -> jump(adapter.getItemCount() - 1)));
+        dialog.add(edges, 14);
+        int column = 0;
+        int columns = root.getWidth() >= dp(620) ? 6 : 4;
+        LinearLayout letters = null;
+        for (String letter : jumps.keySet()) {
+            if (column++ % columns == 0) {
+                letters = new LinearLayout(this);
+                dialog.add(letters, 7);
             }
-        }).show();
+            Button choice = dialog.action(letter, () -> {
+                Integer position = jumps.get(letter);
+                if (position != null) jump(position);
+            });
+            choice.setContentDescription(getString(R.string.jump_to_letter, letter));
+            addButton(letters, choice);
+        }
+        dialog.show(first);
     }
 
     private void page(int delta) { jump(Channels.jumpPage(focusedPosition, adapter.getItemCount(), delta)); }
@@ -588,15 +648,28 @@ public final class MainActivity extends ComponentActivity {
         scheduleGuide();
     }
 
+    private boolean isPlayingSelection() {
+        return selected != null && player.primary() != null && selected.id().equals(player.primary().id());
+    }
+
     private void updateSelection() {
         if (api == null || selectedName == null) return;
-        selectedName.setText(selected == null ? "Select a channel" : selected.label());
-        programText.setText(selected == null ? "Select to watch · hold Select for channel actions" : guideLine(selected.id(), true));
-        starButton.setText(selected != null && favorites.contains(selected.id()) ? "★" : "☆");
-        starButton.setContentDescription(selected != null && favorites.contains(selected.id()) ? "Remove favorite" : "Add favorite");
-        starButton.setEnabled(selected != null && !pendingFavorites.contains(selected.id()));
-        insetButton.setEnabled(selected != null && player != null && player.primary() != null
-                && !player.primary().id().equals(selected.id()));
+        selectedName.setText(selected == null ? getString(R.string.no_channel_selected) : selected.label());
+        programText.setText(selected == null ? "" : guideLine(selected.id(), true));
+        boolean starred = selected != null && favorites.contains(selected.id());
+        boolean saving = selected != null && pendingFavorites.contains(selected.id());
+        starButton.setText(saving ? R.string.saving : starred ? R.string.remove_favorite : R.string.add_favorite);
+        starButton.setEnabled(selected != null);
+        if (guideButton.hasFocus() && selected == null) queryButton.requestFocusFromTouch();
+        guideButton.setEnabled(selected != null);
+        boolean tuned = isPlayingSelection();
+        watchButton.setText(!tuned ? R.string.play_channel : player.primaryStatus().failed() ? R.string.retry : R.string.full_screen);
+        watchButton.setEnabled(selected != null);
+        insetButton.setVisibility(player.primary() == null ? View.GONE : View.VISIBLE);
+        Channels.Channel insetChannel = player.secondary();
+        boolean inInset = selected != null && insetChannel != null && selected.id().equals(insetChannel.id());
+        insetButton.setText(inInset && player.secondaryStatus().failed() ? R.string.retry_inset : R.string.play_in_inset);
+        insetButton.setEnabled(selected != null && !tuned && (!inInset || player.secondaryStatus().failed()));
     }
 
     private void favoriteSelected() {
@@ -619,7 +692,7 @@ public final class MainActivity extends ComponentActivity {
                     rebuildFavorites();
                     if (favoritesOnly) renderFilter(false);
                     else refreshGuideRows();
-                } else toast("Could not update favorite.");
+                } else toast(getString(R.string.favorite_update_failed));
                 updateSelection();
             });
         });
@@ -628,18 +701,23 @@ public final class MainActivity extends ComponentActivity {
     private void channelActions(Channels.Channel channel) {
         int position = Channels.indexOf(adapter.getCurrentList(), channel.id());
         if (position >= 0) focusedPosition = position;
-        selected = channel; updateSelection();
-        boolean canInset = player.primary() != null && !player.primary().id().equals(channel.id());
-        List<String> entries = new ArrayList<>(List.of("Watch", favorites.contains(channel.id()) ? "Remove favorite" : "Add favorite", "Programme guide"));
-        if (canInset) entries.add("Play in inset");
-        entries.add("Try compatible stream");
-        new AlertDialog.Builder(this).setTitle(channel.label()).setItems(entries.toArray(new String[0]), (d, i) -> {
-            if (i == 0) tune(false);
-            else if (i == 1) favoriteSelected();
-            else if (i == 2) scheduleDialog();
-            else if (canInset && i == 3) tune(true);
-            else player.tuneCompatible(api, channel);
-        }).show();
+        selected = channel;
+        updateSelection();
+        TvDialog dialog = new TvDialog(this, channel.label());
+        Button watch = dialog.action(R.string.play_channel, () -> tune(false));
+        dialog.add(watch, 16);
+        if (player.primary() != null && !player.primary().id().equals(channel.id())) {
+            Channels.Channel insetChannel = player.secondary();
+            boolean inInset = insetChannel != null && insetChannel.id().equals(channel.id());
+            if (!inInset || player.secondaryStatus().failed()) {
+                dialog.add(dialog.action(inInset ? R.string.retry_inset : R.string.play_in_inset, () -> tune(true)), 8);
+            }
+        }
+        dialog.add(dialog.action(R.string.guide, this::scheduleDialog), 8);
+        dialog.add(dialog.action(favorites.contains(channel.id()) ? R.string.remove_favorite : R.string.add_favorite,
+                this::favoriteSelected), 8);
+        dialog.add(dialog.action(R.string.compatible_stream, () -> player.tuneCompatible(api, channel)), 8);
+        dialog.show(watch);
     }
 
     private void tune(boolean small) {
@@ -651,23 +729,30 @@ public final class MainActivity extends ComponentActivity {
     private void updatePlayback() {
         if (api == null || player == null) return;
         Channels.Channel main = player.primary(), small = player.secondary();
-        String status = player.primaryStatus(), smallStatus = player.secondaryStatus();
-        boolean mainLive = status.startsWith("LIVE");
-        mainMessage.setText(main == null ? "Choose a channel to start watching" : main.label() + "\n" + status);
-        mainMessage.setVisibility(mainLive ? View.GONE : View.VISIBLE);
+        Playback.Status status = player.primaryStatus(), smallStatus = player.secondaryStatus();
+        mainMessage.setText(main == null ? getString(R.string.choose_channel)
+                : getString(R.string.playback_message, main.label(), getString(status.label)));
+        mainMessage.setVisibility(status.live() ? View.GONE : View.VISIBLE);
         inset.setVisibility(small == null ? View.GONE : View.VISIBLE);
-        insetMessage.setText(small == null ? "" : small.label() + "\n" + smallStatus);
-        insetMessage.setVisibility(smallStatus.startsWith("LIVE") ? View.GONE : View.VISIBLE);
-        watchTitle.setText(main == null ? "" : main.label()
-                + (small == null ? "" : "   ·   Inset: " + small.label()));
-        watchStatus.setText(main == null ? "" : status + "   ");
-        watchButton.setEnabled(main != null);
+        insetMessage.setText(small == null ? ""
+                : getString(R.string.playback_message, small.label(), getString(smallStatus.label)));
+        insetMessage.setVisibility(smallStatus.live() ? View.GONE : View.VISIBLE);
+        watchTitle.setText(main == null ? "" : small == null ? main.label()
+                : getString(R.string.watch_title, main.label(), small.label()));
+        watchStatus.setText(main == null ? "" : getString(status.label));
+        if (!status.failed() && watchRetry.hasFocus()) returnToChannels.requestFocus();
+        watchRetry.setVisibility(status.failed() ? View.VISIBLE : View.GONE);
         swapButton.setVisibility(small == null ? View.GONE : View.VISIBLE);
         closeInset.setVisibility(small == null ? View.GONE : View.VISIBLE);
         watchSwap.setVisibility(small == null ? View.GONE : View.VISIBLE);
         watchClose.setVisibility(small == null ? View.GONE : View.VISIBLE);
-        if (root != null) root.setKeepScreenOn(foreground && player.hasVideo());
+        root.setKeepScreenOn(foreground && player.hasVideo());
         updateSelection();
+    }
+
+    private void closeInset(Button fallback) {
+        fallback.requestFocusFromTouch();
+        player.stopInset();
     }
 
     private void setFullscreen(boolean enabled) {
@@ -683,10 +768,10 @@ public final class MainActivity extends ComponentActivity {
             root.removeView(video);
             stage.addView(video, 0, new LinearLayout.LayoutParams(-1, 0, 1));
             shell.setVisibility(View.VISIBLE); watchBar.setVisibility(View.GONE);
-            jump(Channels.jumpPage(focusedPosition, adapter.getItemCount(), 0));
+            returnToSelectedChannel();
         }
         FrameLayout.LayoutParams p = (FrameLayout.LayoutParams) inset.getLayoutParams();
-        p.bottomMargin = dp(fullscreen ? 56 : 10); inset.setLayoutParams(p);
+        p.bottomMargin = dp(fullscreen ? 64 : 12); inset.setLayoutParams(p);
         scheduleGuide();
     }
 
@@ -758,32 +843,42 @@ public final class MainActivity extends ComponentActivity {
         long window = GuideCache.window(time);
         List<Channels.Program> schedule = epg.get(window, id, elapsed);
         if (schedule == null) {
-            if (window == guideWindow && elapsed < noGuideUntil) return "No programme guide from server";
-            if (window == guideWindow && elapsed < guideBackoffUntil) return "Guide temporarily unavailable";
-            return details ? "Guide · select a channel to watch" : "—";
+            if (window == guideWindow && elapsed < noGuideUntil) return details ? getString(R.string.no_server_guide) : "";
+            if (window == guideWindow && elapsed < guideBackoffUntil) return details ? getString(R.string.guide_unavailable) : "";
+            return "";
         }
         Channels.Program current = Channels.now(schedule, time), next = Channels.next(schedule, time);
-        if (current == null && next == null) return "No programme data";
-        String info = current == null ? "Next " + clock.format(new Date(next.start())) + " · " + next.title()
-                : "Now · " + current.title();
-        return details && current != null && next != null ? info + "\nNext " + clock.format(new Date(next.start())) + " · " + next.title() : info;
+        if (current == null && next == null) return details ? getString(R.string.no_listings) : "";
+        String info = current == null ? nextProgram(next) : getString(R.string.guide_now, current.title());
+        return details && current != null && next != null ? info + '\n' + nextProgram(next) : info;
+    }
+
+    private String nextProgram(Channels.Program program) {
+        return getString(R.string.guide_next, clock.format(new Date(program.start())), program.title());
     }
 
     private void scheduleDialog() {
-        if (selected == null || api == null) { toast("Select a channel first."); return; }
+        if (selected == null || api == null) return;
         Channels.Channel channel = selected;
         Jellyfin server = api;
         long initial = GuideCache.window(System.currentTimeMillis());
-        long[] window = { initial };
-        LinearLayout content = vertical(); content.setPadding(dp(18), dp(5), dp(18), dp(10));
-        TextView caption = text("", 14, ACCENT); content.addView(caption);
-        TextView entries = text("", 15, TEXT);
-        ScrollView scroll = new ScrollView(this); scroll.addView(entries);
-        content.addView(scroll, new LinearLayout.LayoutParams(-1, dp(153)));
-        LinearLayout actions = new LinearLayout(this); content.addView(actions);
-        AlertDialog dialog = new AlertDialog.Builder(this).setTitle(channel.label()).setView(content)
-                .setPositiveButton("Close", null).create();
-        Future<?>[] request = { null };
+        long step = GUIDE_HOURS * 3_600_000L;
+        long limit = initial + 7 * 86_400_000L;
+        long[] window = {initial};
+        TvDialog dialog = new TvDialog(this, channel.label());
+        TextView caption = text("", 16, ACCENT);
+        dialog.add(caption, 8);
+        LinearLayout entries = vertical();
+        android.widget.ScrollView schedule = dialog.scroll(entries, 160);
+        LinearLayout actions = new LinearLayout(this);
+        Button earlier = button(R.string.earlier, null);
+        Button later = button(R.string.later, null);
+        Button close = button(R.string.close, dialog::dismiss);
+        addButton(actions, earlier);
+        addButton(actions, later);
+        addButton(actions, close);
+        dialog.add(actions, 14);
+        Future<?>[] request = {null};
         Runnable fetch = () -> {
             long from = window[0];
             int generation = guideGeneration;
@@ -793,12 +888,15 @@ public final class MainActivity extends ComponentActivity {
                     ui.post(() -> {
                         if (destroyed || server != api || generation != guideGeneration) return;
                         epg.put(from, channel.id(), result, SystemClock.elapsedRealtime());
-                        if (dialog.isShowing() && window[0] == from) entries.setText(scheduleText(result, from));
+                        if (dialog.isShowing() && window[0] == from) {
+                            showSchedule(entries, result);
+                            schedule.post(() -> schedule.setFocusable(entries.getHeight() > schedule.getHeight()));
+                        }
                     });
                 } catch (Exception error) {
                     ui.post(() -> {
                         if (!destroyed && server == api && generation == guideGeneration
-                                && dialog.isShowing() && window[0] == from) entries.setText(R.string.guide_load_failed);
+                                && dialog.isShowing() && window[0] == from) scheduleMessage(entries, R.string.guide_load_failed);
                     });
                 }
             });
@@ -807,52 +905,92 @@ public final class MainActivity extends ComponentActivity {
             ui.removeCallbacks(fetch);
             if (request[0] != null) request[0].cancel(false);
         };
-        long step = GUIDE_HOURS * 3_600_000L;
-        long limit = initial + 7 * 86_400_000L;
-        Button earlier = button("Earlier", null), later = button("Later", null);
         Runnable load = () -> {
             cancel.run();
             long from = window[0];
+            if (from == initial && earlier.hasFocus()) later.requestFocus();
+            if (from == limit && later.hasFocus()) earlier.requestFocus();
             earlier.setEnabled(from > initial);
             later.setEnabled(from < limit);
-            caption.setText(getString(R.string.guide_time_range, clock.format(new Date(from)), clock.format(new Date(from + step))));
+            Date date = new Date(from);
+            caption.setText(getString(R.string.guide_window, guideDate.format(date), clock.format(date),
+                    clock.format(new Date(from + step))));
+            schedule.scrollTo(0, 0);
             List<Channels.Program> cached = epg.get(from, channel.id(), SystemClock.elapsedRealtime());
-            if (cached != null) { entries.setText(scheduleText(cached, from)); return; }
-            entries.setText(R.string.guide_loading);
-            ui.postDelayed(fetch, 150);
+            schedule.setFocusable(false);
+            if (cached != null) {
+                showSchedule(entries, cached);
+                schedule.post(() -> schedule.setFocusable(entries.getHeight() > schedule.getHeight()));
+            }
+            else {
+                scheduleMessage(entries, R.string.guide_loading);
+                ui.postDelayed(fetch, 150);
+            }
         };
-        earlier.setOnClickListener(view -> {
-            if (window[0] > initial) { window[0] -= step; load.run(); }
-        });
-        later.setOnClickListener(view -> {
-            if (window[0] < limit) { window[0] += step; load.run(); }
-        });
-        addButton(actions, earlier); addButton(actions, later);
-        dialog.setOnDismissListener(d -> cancel.run());
-        dialog.show(); load.run();
+        earlier.setOnClickListener(view -> { window[0] -= step; load.run(); });
+        later.setOnClickListener(view -> { window[0] += step; load.run(); });
+        dialog.onDismiss(cancel);
+        load.run();
+        dialog.show(later);
     }
 
-    private String scheduleText(List<Channels.Program> entries, long from) {
-        StringBuilder result = new StringBuilder();
-        for (Channels.Program p : entries) {
-            if (p.end() <= from) continue;
-            result.append(clock.format(new Date(p.start()))).append("   ").append(p.title()).append('\n');
+    private void showSchedule(LinearLayout entries, List<Channels.Program> programs) {
+        if (programs.isEmpty()) {
+            scheduleMessage(entries, R.string.no_listings);
+            return;
         }
-        return result.length() == 0 ? "No programme data for this time." : result.toString();
+        entries.removeAllViews();
+        long now = System.currentTimeMillis();
+        for (Channels.Program program : programs) {
+            LinearLayout row = new LinearLayout(this);
+            row.setPadding(0, dp(5), 0, dp(5));
+            boolean live = program.onAir(now);
+            TextView time = text(clock.format(new Date(program.start())), 15, live ? ACCENT : DIM);
+            row.addView(time, new LinearLayout.LayoutParams(dp(98), -2));
+            TextView title = text(program.title(), 17, TEXT);
+            title.setMaxLines(2);
+            title.setEllipsize(TextUtils.TruncateAt.END);
+            row.addView(title, new LinearLayout.LayoutParams(0, -2, 1));
+            if (live) row.addView(text(getString(R.string.now), 14, ACCENT));
+            entries.addView(row);
+        }
+    }
+
+    private void scheduleMessage(LinearLayout entries, int message) {
+        entries.removeAllViews();
+        entries.addView(text(getString(message), 17, DIM));
     }
 
     private void serverDialog() {
         if (api == null) return;
-        new AlertDialog.Builder(this).setTitle("Jellyfin server").setMessage(api.session.server())
-                .setPositiveButton("Refresh channels", (d, w) -> requestLocalNetwork(granted -> {
-                    if (!granted) { toast(getString(R.string.local_network_access)); return; }
-                    ++guideGeneration;
-                    epg.clear(); noGuideUntil = guideCheckedUntil = guideBackoffUntil = 0;
-                    refreshGuideRows(); scheduleGuide();
-                    loadCatalog();
-                }))
-                .setNeutralButton("Sign out", (d, w) -> signOut(true))
-                .setNegativeButton("Close", null).show();
+        TvDialog dialog = new TvDialog(this, getString(R.string.jellyfin_server));
+        TextView address = text(api.session.server(), 17, DIM);
+        address.setSingleLine();
+        address.setEllipsize(TextUtils.TruncateAt.MIDDLE);
+        dialog.add(address, 8);
+        Button refresh = dialog.action(R.string.refresh_channels, () -> requestLocalNetwork(granted -> {
+            if (!granted) { toast(getString(R.string.local_network_access)); return; }
+            ++guideGeneration;
+            epg.clear(); noGuideUntil = guideCheckedUntil = guideBackoffUntil = 0;
+            refreshGuideRows(); scheduleGuide();
+            loadCatalog();
+        }));
+        dialog.add(refresh, 16);
+        dialog.add(dialog.action(R.string.sign_out, this::confirmSignOut), 8);
+        dialog.add(button(R.string.close, dialog::dismiss), 8);
+        dialog.show(refresh);
+    }
+
+    private void confirmSignOut() {
+        TvDialog dialog = new TvDialog(this, getString(R.string.sign_out_title));
+        dialog.add(text(getString(R.string.sign_out_description), 17, DIM), 8);
+        LinearLayout actions = new LinearLayout(this);
+        Button cancel = button(R.string.stay_signed_in, dialog::dismiss);
+        addButton(actions, cancel);
+        Button signOut = dialog.action(R.string.sign_out, () -> signOut(true));
+        addButton(actions, signOut);
+        dialog.add(actions, 16);
+        dialog.show(cancel);
     }
 
     private void signOut(boolean revoke) {
@@ -863,10 +1001,10 @@ public final class MainActivity extends ComponentActivity {
             String message;
             try {
                 server.logout();
-                message = "Signed out.";
+                message = getString(R.string.signed_out);
             } catch (java.io.IOException failure) {
-                message = failure instanceof Jellyfin.HttpFailure http && http.status == 401 ? "Signed out."
-                        : "Signed out here. Could not end the server session.";
+                message = getString(failure instanceof Jellyfin.HttpFailure http && http.status == 401
+                        ? R.string.signed_out : R.string.signed_out_locally);
             }
             String result = message;
             ui.post(() -> {
@@ -879,11 +1017,10 @@ public final class MainActivity extends ComponentActivity {
         all = List.of(); favorites = Set.of(); favoriteOverrides.clear(); pendingFavorites.clear();
         pendingJump = null; focusedPosition = 0; resetSelection = false;
         query = ""; favoritesOnly = false; fullscreen = false; catalogBusy = false; guideBusy = false;
-        expectedCount = 0;
         ++guideGeneration;
         noGuideUntil = guideCheckedUntil = guideBackoffUntil = 0;
         epg.clear(); store.clear();
-        showLogin(revoke ? "Signing out…" : "Sign-in expired. Connect again.");
+        showLogin(getString(revoke ? R.string.signing_out : R.string.sign_in_expired));
     }
 
     private void toast(String message) { Toast.makeText(this, message, Toast.LENGTH_SHORT).show(); }
@@ -947,6 +1084,7 @@ public final class MainActivity extends ComponentActivity {
         if (signIn != null && signIn.back()) return;
         if (fullscreen) { setFullscreen(false); return; }
         if (!query.isBlank()) { applySearch(""); return; }
+        if (favoritesOnly) { favoritesOnly = false; renderFilter(true); return; }
         if (player != null && player.primary() != null) { player.stopAll(); return; }
         finish();
     }
