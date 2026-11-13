@@ -82,6 +82,7 @@ public final class MainActivity extends ComponentActivity {
     private Map<String, Integer> jumps = Map.of();
     private Channels.Channel selected;
     private Channels.Channel resumeMain, resumeInset;
+    private boolean resumeMainPaused, resumeInsetPaused;
     private String query = "";
     private String loadProblem;
     private boolean favoritesOnly, catalogBusy, guideBusy, fullscreen, foreground, destroyed, signingOut;
@@ -100,7 +101,7 @@ public final class MainActivity extends ComponentActivity {
     private int revealKey = KeyEvent.KEYCODE_UNKNOWN;
     private TextView count, empty, selectedName, programText, mainMessage, insetMessage, watchTitle, watchStatus, previewLabel;
     private Button filterButton, queryButton, jumpButton, guideButton, watchButton, insetButton, swapButton, closeInset, starButton;
-    private Button watchSwap, watchClose, watchRetry;
+    private Button watchSwap, watchClose, watchRetry, watchPause;
     private Button returnToChannels, emptyAction;
     private Consumer<Boolean> pendingNetworkAction;
     private final ActivityResultLauncher<String> networkPermission = registerForActivityResult(
@@ -469,6 +470,8 @@ public final class MainActivity extends ComponentActivity {
         watchBar.addView(watchStatus);
         returnToChannels = button(R.string.channels, () -> setFullscreen(false));
         addButton(watchBar, returnToChannels);
+        watchPause = button(R.string.pause, () -> player.setPlaying(player.primaryStatus() == Playback.Status.PAUSED));
+        addButton(watchBar, watchPause);
         watchRetry = button(R.string.retry, () -> player.tune(api, player.primary(), false));
         addButton(watchBar, watchRetry);
         watchSwap = button(R.string.swap, () -> player.swap()); addButton(watchBar, watchSwap);
@@ -548,6 +551,7 @@ public final class MainActivity extends ComponentActivity {
                 player.reconcileChannels(snapshot);
                 if (resumeMain != null && Channels.indexOf(snapshot, resumeMain.id()) < 0) {
                     resumeMain = resumeInset;
+                    resumeMainPaused = resumeInsetPaused;
                     resumeInset = null;
                 }
                 if (resumeMain != null && Channels.indexOf(snapshot, resumeMain.id()) < 0) resumeMain = null;
@@ -711,8 +715,9 @@ public final class MainActivity extends ComponentActivity {
         guideButton.setEnabled(selected != null);
         boolean tuned = isPlayingSelection();
         Channels.Channel playing = player.primary();
-        previewLabel.setText(playing == null ? "" : getString(R.string.watching_channel, playing.label()));
-        previewLabel.setVisibility(!fullscreen && !tuned && playing != null && player.primaryStatus().live()
+        boolean paused = player.primaryStatus() == Playback.Status.PAUSED;
+        previewLabel.setText(playing == null ? "" : getString(paused ? R.string.paused_channel : R.string.watching_channel, playing.label()));
+        previewLabel.setVisibility(!fullscreen && playing != null && (paused || (!tuned && player.primaryStatus().live()))
                 ? View.VISIBLE : View.GONE);
         watchButton.setText(!tuned ? R.string.play_channel : player.primaryStatus().failed() ? R.string.retry : R.string.full_screen);
         watchButton.setEnabled(selected != null);
@@ -783,8 +788,11 @@ public final class MainActivity extends ComponentActivity {
         Playback.Status status = player.primaryStatus(), smallStatus = player.secondaryStatus();
         mainMessage.setText(main == null ? getString(R.string.choose_channel)
                 : getString(R.string.playback_message, main.label(), getString(status.label)));
-        mainMessage.setVisibility(status.live() ? View.GONE : View.VISIBLE);
+        mainMessage.setGravity(main == null ? Gravity.CENTER : Gravity.TOP | Gravity.START);
+        mainMessage.setBackgroundColor(main == null ? 0x00000000 : 0xaa171719);
+        mainMessage.setVisibility(status.live() || status == Playback.Status.PAUSED ? View.GONE : View.VISIBLE);
         inset.setVisibility(small == null ? View.GONE : View.VISIBLE);
+        insetMessage.setBackgroundColor(0xaa171719);
         insetMessage.setText(small == null ? ""
                 : getString(R.string.playback_message, small.label(), getString(smallStatus.label)));
         insetMessage.setVisibility(smallStatus.live() ? View.GONE : View.VISIBLE);
@@ -794,6 +802,9 @@ public final class MainActivity extends ComponentActivity {
                 : status == Playback.Status.LIVE_COMPATIBLE ? R.string.live_compatible_short : status.label));
         if (!status.failed() && watchRetry.hasFocus()) returnToChannels.requestFocus();
         watchRetry.setVisibility(status.failed() ? View.VISIBLE : View.GONE);
+        if (!player.canPause() && watchPause.hasFocus()) returnToChannels.requestFocus();
+        watchPause.setEnabled(player.canPause());
+        watchPause.setText(status == Playback.Status.PAUSED ? R.string.resume_live : R.string.pause);
         swapButton.setVisibility(small == null ? View.GONE : View.VISIBLE);
         closeInset.setVisibility(small == null ? View.GONE : View.VISIBLE);
         watchSwap.setVisibility(small == null ? View.GONE : View.VISIBLE);
@@ -801,7 +812,7 @@ public final class MainActivity extends ComponentActivity {
         root.setKeepScreenOn(foreground && player.hasVideo());
         updateSelection();
         if (fullscreen) {
-            if (status.failed() || smallStatus.failed()) showWatchControls();
+            if (status.failed() || smallStatus.failed() || status == Playback.Status.PAUSED) showWatchControls();
             else scheduleWatchControls();
         }
     }
@@ -1109,8 +1120,8 @@ public final class MainActivity extends ComponentActivity {
     @Override protected void onStart() {
         super.onStart(); foreground = true;
         if (api != null && player != null) {
-            if (resumeMain != null) player.tune(api, resumeMain, false);
-            if (resumeInset != null && resumeMain != null) player.tune(api, resumeInset, true);
+            if (resumeMain != null) player.tune(api, resumeMain, false, resumeMainPaused);
+            if (resumeInset != null && resumeMain != null) player.tune(api, resumeInset, true, resumeInsetPaused);
             resumeMain = null; resumeInset = null;
             scheduleGuide();
         }
@@ -1122,6 +1133,8 @@ public final class MainActivity extends ComponentActivity {
         ui.removeCallbacks(hideWatchControls);
         if (player != null) {
             resumeMain = player.primary(); resumeInset = player.secondary();
+            resumeMainPaused = player.primaryStatus() == Playback.Status.PAUSED;
+            resumeInsetPaused = player.secondaryStatus() == Playback.Status.PAUSED;
             player.stopAll();
         }
         super.onStop();
@@ -1137,6 +1150,7 @@ public final class MainActivity extends ComponentActivity {
     }
 
     private boolean handleWatchKey(KeyEvent event) {
+        if (handleMediaKey(event)) return true;
         int key = event.getKeyCode();
         if (key == revealKey) {
             if (event.getAction() == KeyEvent.ACTION_UP) revealKey = KeyEvent.KEYCODE_UNKNOWN;
@@ -1170,7 +1184,19 @@ public final class MainActivity extends ComponentActivity {
         return key == KeyEvent.KEYCODE_PAGE_DOWN || key == KeyEvent.KEYCODE_PAGE_UP;
     }
 
+    private boolean handleMediaKey(KeyEvent event) {
+        int key = event.getKeyCode();
+        if (player == null || player.primary() == null || (key != KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE
+                && key != KeyEvent.KEYCODE_MEDIA_PLAY && key != KeyEvent.KEYCODE_MEDIA_PAUSE)) return false;
+        if (event.getAction() == KeyEvent.ACTION_DOWN && event.getRepeatCount() == 0) {
+            player.setPlaying(key == KeyEvent.KEYCODE_MEDIA_PLAY
+                    || (key == KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE && player.primaryStatus() == Playback.Status.PAUSED));
+        }
+        return true;
+    }
+
     private boolean handleRemoteKey(KeyEvent event) {
+        if (handleMediaKey(event)) return true;
         if (event.getAction() == KeyEvent.ACTION_DOWN && api != null && !fullscreen) {
             int key = event.getKeyCode();
             if (key == KeyEvent.KEYCODE_PAGE_DOWN || key == KeyEvent.KEYCODE_CHANNEL_DOWN || key == KeyEvent.KEYCODE_MEDIA_FAST_FORWARD) {

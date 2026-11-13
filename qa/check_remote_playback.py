@@ -63,6 +63,15 @@ def streams(expected):
     raise AssertionError(state)
 
 
+
+def controls_hidden():
+    for _ in range(6):
+        time.sleep(6)
+        if not any(node.get('text') == 'Channels' for node in nodes()):
+            return
+    raise AssertionError('Fullscreen controls did not hide after playback settled')
+
+
 request('/qa/guide_failure?enabled=1', {})
 session = request('/Users/AuthenticateByName', {'Username': 'remote-check', 'Pw': 'fixture'})
 seed = json.dumps({'base': f'http://10.0.2.2:{args.port}', 'token': session['AccessToken'],
@@ -125,12 +134,21 @@ focused('1  Amber One')
 key(22)
 focused('Full screen')
 key(23)
-time.sleep(7)
-assert not any(node.get('text') == 'Channels' for node in nodes()), 'Controls did not hide'
+controls_hidden()
 key(23)
 focused('Channels')  # The reveal press must not also activate Channels.
-# UIAutomator may wait longer than the auto-hide delay for a moving video to idle.
-key(19)  # Reveal again if that happened before navigating to Swap.
+key(85)  # Physical Play/Pause must pause the main picture, preserving the inset.
+time.sleep(6)
+assert any(node.get('text') == 'Resume live' for node in nodes()), 'Paused playback lost its resume control'
+streams(2)
+key(3)
+streams(0)
+adb('shell', 'am', 'start', '-n', 'com.parmesh.livetv/.MainActivity')
+streams(2)
+assert any(node.get('text') == 'Resume live' for node in nodes()), 'Returning to the app resumed paused playback'
+key(22)
+focused('Resume live')
+key(23)
 key(22)
 key(23)  # Swap without leaving fullscreen or opening another tuner.
 streams(2)
@@ -138,10 +156,9 @@ key(22)
 key(23)  # Close inset; focus must move to a surviving control.
 focused('Channels')
 streams(1)
-time.sleep(7)
-assert not any(node.get('text') == 'Channels' for node in nodes()), 'Controls did not hide again'
+controls_hidden()
 key(4)  # Back also works while all controls are hidden.
 focused('1  Amber One')
 key(4)
 streams(0)
-print('PASS: two streams, auto-hide, reveal without activation, swap, close inset, Back, tuner cleanup')
+print('PASS: two streams, pause/resume, auto-hide, reveal without activation, swap, close inset, Back, tuner cleanup')

@@ -26,7 +26,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 final class Playback {
     enum Status {
         IDLE(0), TUNING(R.string.tuning), COMPATIBLE(R.string.trying_compatible), BUFFERING(R.string.buffering),
-        LIVE(R.string.live), LIVE_COMPATIBLE(R.string.live_compatible),
+        LIVE(R.string.live), LIVE_COMPATIBLE(R.string.live_compatible), PAUSED(R.string.paused),
         TUNE_FAILED(R.string.tune_failed), STREAM_FAILED(R.string.stream_failed), INSET_FAILED(R.string.inset_failed);
 
         final int label;
@@ -52,6 +52,7 @@ final class Playback {
         Channels.Channel channel;
         Status status = Status.IDLE;
         boolean fallback;
+        boolean playWhenReady = true;
         Runnable bufferTimeout;
 
         boolean active() { return channel != null && !status.failed(); }
@@ -66,14 +67,31 @@ final class Playback {
 
     Channels.Channel primary() { return primary.channel; }
     Channels.Channel secondary() { return secondary.channel; }
-    Status primaryStatus() { return primary.status; }
-    Status secondaryStatus() { return secondary.status; }
+    Status primaryStatus() { return status(primary); }
+    Status secondaryStatus() { return status(secondary); }
+    private Status status(Slot slot) {
+        boolean paused = slot.player == null ? !slot.playWhenReady : !slot.player.getPlayWhenReady();
+        return slot.channel != null && !slot.status.failed() && paused ? Status.PAUSED : slot.status;
+    }
+
+    boolean canPause() { return primary.player != null && (primary.status.live() || primary.status == Status.BUFFERING); }
+
+    void setPlaying(boolean playing) {
+        if (!canPause()) return;
+        if (playing && !primary.player.getPlayWhenReady()) primary.player.seekToDefaultPosition();
+        primary.playWhenReady = playing;
+        primary.player.setPlayWhenReady(playing);
+    }
     boolean hasVideo() {
         return (primary.player != null && primary.player.isPlaying())
                 || (secondary.player != null && secondary.player.isPlaying());
     }
 
     void tune(Jellyfin api, Channels.Channel channel, boolean inset) {
+        tune(api, channel, inset, false);
+    }
+
+    void tune(Jellyfin api, Channels.Channel channel, boolean inset, boolean paused) {
         Slot target = inset ? secondary : primary;
         Slot other = inset ? primary : secondary;
         if (other.channel != null && other.channel.id().equals(channel.id())) {
@@ -88,11 +106,13 @@ final class Playback {
             stop(other);
         }
         if (target.active() && target.channel.id().equals(channel.id())) return;
+        target.playWhenReady = !paused;
         request(target, api, channel, false);
     }
 
     void tuneCompatible(Jellyfin api, Channels.Channel channel) {
         if (secondary.channel != null && secondary.channel.id().equals(channel.id())) stop(secondary);
+        primary.playWhenReady = true;
         request(primary, api, channel, true);
     }
 
@@ -156,11 +176,7 @@ final class Playback {
         player.addListener(new Player.Listener() {
             @Override public void onPlaybackStateChanged(int state) {
                 if (slot.generation != generation) return;
-                cancelBufferTimeout(slot);
-                if (state == Player.STATE_BUFFERING) {
-                    slot.bufferTimeout = () -> failed(slot, generation);
-                    ui.postDelayed(slot.bufferTimeout, 24_000);
-                }
+                updateBufferTimeout(slot, generation);
                 if (state == Player.STATE_ENDED) {
                     failed(slot, generation);
                 } else {
@@ -168,6 +184,13 @@ final class Playback {
                             : state == Player.STATE_BUFFERING ? Status.BUFFERING : slot.status;
                     changed.run();
                 }
+            }
+
+            @Override public void onPlayWhenReadyChanged(boolean playing, int reason) {
+                if (slot.generation != generation) return;
+                slot.playWhenReady = playing;
+                updateBufferTimeout(slot, generation);
+                changed.run();
             }
 
             @Override public void onIsPlayingChanged(boolean playing) {
@@ -187,7 +210,7 @@ final class Playback {
         MediaItem.Builder item = new MediaItem.Builder().setUri(stream.url().toString());
         if (stream.hls()) item.setMimeType(MimeTypes.APPLICATION_M3U8);
         player.setMediaItem(item.build());
-        player.setPlayWhenReady(true);
+        player.setPlayWhenReady(slot.playWhenReady);
         player.prepare();
 
     }
@@ -230,6 +253,14 @@ final class Playback {
         mainView.setPlayer(primary.player);
         insetView.setPlayer(secondary.player);
         changed.run();
+    }
+
+    private void updateBufferTimeout(Slot slot, long generation) {
+        cancelBufferTimeout(slot);
+        if (slot.player.getPlayWhenReady() && slot.player.getPlaybackState() == Player.STATE_BUFFERING) {
+            slot.bufferTimeout = () -> failed(slot, generation);
+            ui.postDelayed(slot.bufferTimeout, 24_000);
+        }
     }
 
     private void cancelBufferTimeout(Slot slot) {

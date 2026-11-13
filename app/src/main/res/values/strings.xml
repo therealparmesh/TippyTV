@@ -81,6 +81,10 @@
     <string name="tuning">Opening channel…</string>
     <string name="trying_compatible">Trying another stream…</string>
     <string name="buffering">Buffering…</string>
+    <string name="pause">Pause</string>
+    <string name="paused_channel">Paused · %1$s</string>
+    <string name="paused">Paused</string>
+    <string name="resume_live">Resume live</string>
     <string name="live">Live</string>
     <string name="live_compatible">Live · Compatible stream</string>
     <string name="live_compatible_short">Live · Compatible</string>
