@@ -95,13 +95,13 @@ public final class MainActivity extends ComponentActivity {
     private volatile long catalogGeneration;
     private FrameLayout root, video, inset;
     private PlayerView mainSurface, insetSurface;
-    private LinearLayout shell, stage;
+    private LinearLayout shell, stage, emptyState, pager;
     private HorizontalScrollView watchOverlay;
     private int revealKey = KeyEvent.KEYCODE_UNKNOWN;
     private TextView count, empty, selectedName, programText, mainMessage, insetMessage, watchTitle, watchStatus;
     private Button filterButton, queryButton, jumpButton, guideButton, watchButton, insetButton, swapButton, closeInset, starButton;
     private Button watchSwap, watchClose, watchRetry;
-    private Button returnToChannels;
+    private Button returnToChannels, emptyAction;
     private Consumer<Boolean> pendingNetworkAction;
     private final ActivityResultLauncher<String> networkPermission = registerForActivityResult(
             new ActivityResultContracts.RequestPermission(), granted -> {
@@ -339,10 +339,23 @@ public final class MainActivity extends ComponentActivity {
         adapter = new ChannelAdapter();
         list.setAdapter(adapter);
         listArea.addView(list, new FrameLayout.LayoutParams(-1, -1));
-        empty = text("", 17, DIM); empty.setGravity(Gravity.CENTER);
-        empty.setPadding(dp(16), 0, dp(16), 0);
-        listArea.addView(empty, new FrameLayout.LayoutParams(-1, -1));
-        LinearLayout pager = new LinearLayout(this);
+        emptyState = vertical();
+        emptyState.setGravity(Gravity.CENTER);
+        emptyState.setPadding(dp(20), dp(12), dp(20), dp(12));
+        empty = text("", 17, DIM);
+        empty.setGravity(Gravity.CENTER);
+        emptyState.addView(empty, new LinearLayout.LayoutParams(-1, -2));
+        emptyAction = button(R.string.clear_search, () -> {
+            if (loadProblem != null) loadCatalog();
+            else if (!query.isBlank()) applySearch("");
+            else { favoritesOnly = false; renderFilter(true); }
+        });
+        emptyAction.setId(View.generateViewId());
+        LinearLayout.LayoutParams recovery = new LinearLayout.LayoutParams(-2, dp(44));
+        recovery.topMargin = dp(18);
+        emptyState.addView(emptyAction, recovery);
+        listArea.addView(emptyState, new FrameLayout.LayoutParams(-1, -1));
+        pager = new LinearLayout(this);
         pager.setPadding(dp(8), dp(3), dp(4), dp(5));
         Button previous = button("−50", () -> page(-50));
         previous.setContentDescription(getString(R.string.skip_backward));
@@ -574,8 +587,10 @@ public final class MainActivity extends ComponentActivity {
                         focusedPosition = position >= 0 ? position : Channels.jumpPage(focusedPosition, filtered.size(), 0);
                         selected = filtered.get(focusedPosition);
                     }
+                    boolean focusRecovery = resetSelection && filtered.isEmpty();
                     resetSelection = false;
                     updateCount();
+                    if (focusRecovery && emptyAction.isShown()) emptyAction.requestFocus();
                     updateSelection();
                     scheduleGuide();
                 });
@@ -592,7 +607,14 @@ public final class MainActivity extends ComponentActivity {
         else if (!query.isBlank()) label = getString(R.string.search_channel_count, label, query);
         count.setText(label);
         jumpButton.setEnabled(n > 0);
-        empty.setVisibility(n == 0 ? View.VISIBLE : View.GONE);
+        emptyState.setVisibility(n == 0 ? View.VISIBLE : View.GONE);
+        pager.setVisibility(n == 0 ? View.GONE : View.VISIBLE);
+        boolean canRecover = n == 0 && !catalogBusy && (loadProblem != null || !query.isBlank() || favoritesOnly);
+        if (!canRecover && emptyAction.hasFocus()) queryButton.requestFocus();
+        emptyAction.setVisibility(canRecover ? View.VISIBLE : View.GONE);
+        emptyAction.setText(loadProblem != null ? R.string.retry : !query.isBlank() ? R.string.clear_search : R.string.all_channels);
+        queryButton.setNextFocusDownId(canRecover ? emptyAction.getId() : list.getId());
+        filterButton.setNextFocusDownId(canRecover ? emptyAction.getId() : list.getId());
         empty.setText(loadProblem != null ? loadProblem : getString(catalogBusy ? R.string.loading_channels
                 : !query.isBlank() ? R.string.no_matching_channels
                 : favoritesOnly ? R.string.no_favorites : R.string.no_channels));

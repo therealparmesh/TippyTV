@@ -77,6 +77,21 @@ for _ in range(10):
 else:
     raise AssertionError('Fixture lineup did not load')
 
+key(84)
+adb('shell', 'input', 'text', 'zzzznomatch')
+key(66)
+focused('Clear search')
+assert not any(node.get('text') in ('−50', '+50') for node in nodes()), 'Empty list still has paging controls'
+key(23)
+focused('1  Amber One')
+key(19)
+focused('Search')
+key(22)
+key(23)
+focused('All channels')
+key(23)
+focused('1  Amber One')
+print('PASS: search and favorites empty-state recovery', flush=True)
 key(92)
 focused('1  Amber One')
 key(23)
