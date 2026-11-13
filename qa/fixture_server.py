@@ -14,6 +14,9 @@ lock=threading.Lock()
 channels=[{'Id':'a','Name':'Amber One','ChannelNumber':'1'},{'Id':'b','Name':'Blue Two','ChannelNumber':'2'}]
 channels += [{'Id':f'c{i}','Name':f'Channel {i:04d}','ChannelNumber':str(i)} for i in range(3,1204)]
 def iso(epoch):return datetime.fromtimestamp(epoch,timezone.utc).isoformat()
+def timestamp(query,key,default):
+    value=query.get(key,[None])[0]
+    return datetime.fromisoformat(value.replace('Z','+00:00')).timestamp() if value else default
 class Handler(BaseHTTPRequestHandler):
     def log_message(self,*args):pass
     def result(self,status,data=None,kind='application/json'):
@@ -43,9 +46,10 @@ class Handler(BaseHTTPRequestHandler):
             with lock:state['guide']+=1
             ids=q.get('channelIds',['a,b'])[0].split(',')
             now=time.time();begin=(int(now)//1800)*1800
+            first=timestamp(q,'minEndDate',float('-inf'));last=timestamp(q,'maxStartDate',float('inf'))
             rows=[{'ChannelId':x,'Name':('Morning magazine' if x=='a' else 'Live bulletin') if n==0 else f'Upcoming show {n}',
                 'StartDate':iso(begin+1800*n),'EndDate':iso(begin+1800*(n+1))}
-                for n in range(7) for x in ids if x in ('a','b')]
+                for n in range(7) for x in ids if x in ('a','b') and begin+1800*n<last and begin+1800*(n+1)>first]
             page=int(q.get('startIndex',['0'])[0]);size=int(q.get('limit',['160'])[0])
             return self.result(200,{'Items':rows[page:page+size]})
         if path in ('/a.m3u8','/b.m3u8'):
