@@ -67,6 +67,7 @@ final class TvDialog {
 
     ScrollView scroll(View content, int height) {
         ScrollView scroll = new ScrollView(activity);
+        scroll.setScrollBarStyle(View.SCROLLBARS_INSIDE_INSET);
         scroll.setFocusable(false);
         scroll.setDescendantFocusability(ViewGroup.FOCUS_BEFORE_DESCENDANTS);
         scroll.setBackground(activity.focusBackground(MainActivity.BG));
