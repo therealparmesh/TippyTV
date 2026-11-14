@@ -75,7 +75,6 @@
     <string name="no_channels">Jellyfin has no Live TV channels for this account.</string>
     <string name="no_channel_selected">No channel selected</string>
     <string name="choose_channel">Select a channel to start watching</string>
-    <string name="saving">Saving…</string>
     <string name="full_screen">Full screen</string>
     <string name="channels">Channels</string>
     <string name="swap">Swap</string>

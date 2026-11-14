@@ -44,7 +44,7 @@ def nodes():
 
 
 def label(node):
-    return node.get('text') or next((child.get('text') for child in node.iter('node')
+    return node.get('text') or node.get('content-desc') or next((child.get('text') for child in node.iter('node')
                                    if child.get('text')), '')
 
 
@@ -103,7 +103,9 @@ key(23)
 focused('1  Amber One')
 print('PASS: search and favorites empty-state recovery', flush=True)
 adb('shell', 'input', 'keyevent', '--longpress', '23')
+focused('Play channel')
 key(20)
+focused('Guide')
 key(23)
 focused('Later')
 key(19)

@@ -104,7 +104,7 @@ public final class MainActivity extends ComponentActivity {
     private HorizontalScrollView watchOverlay;
     private int revealKey = KeyEvent.KEYCODE_UNKNOWN;
     private TextView count, empty, selectedName, programText, mainMessage, insetMessage, watchTitle, watchStatus, previewLabel;
-    private Button filterButton, queryButton, jumpButton, guideButton, watchButton, insetButton, swapButton, closeInset, starButton;
+    private Button filterButton, queryButton, jumpButton, guideButton;
     private Button watchSwap, watchClose, watchRetry, watchPause;
     private Button returnToChannels, emptyAction;
     private Consumer<Boolean> pendingNetworkAction;
@@ -347,8 +347,8 @@ public final class MainActivity extends ComponentActivity {
             @Override public boolean dispatchKeyEvent(KeyEvent event) {
                 if (event.getAction() == KeyEvent.ACTION_UP && isPageKey(event.getKeyCode())) return true;
                 if (event.getAction() == KeyEvent.ACTION_DOWN && event.getKeyCode() == KeyEvent.KEYCODE_DPAD_RIGHT
-                        && watchButton != null && watchButton.isEnabled()) {
-                    return watchButton.requestFocus() || super.dispatchKeyEvent(event);
+                        && video != null && video.isFocusable()) {
+                    return video.requestFocus() || super.dispatchKeyEvent(event);
                 }
                 if (event.getAction() == KeyEvent.ACTION_DOWN && event.getKeyCode() == KeyEvent.KEYCODE_DPAD_LEFT
                         && pager != null && pager.isShown()) return pager.getChildAt(0).requestFocus();
@@ -432,8 +432,20 @@ public final class MainActivity extends ComponentActivity {
         video.setBackground(box(0xff171719, 0, 12));
         video.setOnClickListener(view -> {
             if (fullscreen) showWatchControls();
+            else if (player.primary() != null || selected != null) {
+                if (player.primary() == null) tune(false);
+                setFullscreen(true);
+            }
         });
-        video.setFocusable(false);
+        video.setFocusable(true);
+        video.setContentDescription(getString(R.string.full_screen));
+        video.setOnFocusChangeListener((view, focused) ->
+                video.setForeground(focused && !fullscreen ? box(0, ACCENT, 12) : null));
+        video.setOnKeyListener((view, key, event) -> {
+            if (fullscreen || event.getAction() != KeyEvent.ACTION_DOWN || key != KeyEvent.KEYCODE_DPAD_LEFT) return false;
+            returnToSelectedChannel();
+            return true;
+        });
         stage.addView(video, new LinearLayout.LayoutParams(-1, 0, 1));
         mainSurface = new PlayerView(this); mainSurface.setUseController(false);
         mainSurface.setFocusable(false); mainSurface.setKeepContentOnPlayerReset(false);
@@ -474,23 +486,6 @@ public final class MainActivity extends ComponentActivity {
         selectedName.setPadding(0, dp(7), 0, 0); stage.addView(selectedName);
         programText = text("", 15, DIM); programText.setMaxLines(2); programText.setEllipsize(TextUtils.TruncateAt.END);
         stage.addView(programText, new LinearLayout.LayoutParams(-1, dp(43)));
-        LinearLayout controls = new LinearLayout(this); controls.setGravity(Gravity.CENTER_VERTICAL);
-        watchButton = button(R.string.play_channel, () -> {
-            if (selected == null) return;
-            if (!isPlayingSelection() || player.primaryStatus().failed()) tune(false);
-            else setFullscreen(true);
-        }); addButton(controls, watchButton);
-        watchButton.setOnKeyListener((view, key, event) -> {
-            if (event.getAction() != KeyEvent.ACTION_DOWN || key != KeyEvent.KEYCODE_DPAD_LEFT) return false;
-            returnToSelectedChannel();
-            return true;
-        });
-        insetButton = button(R.string.play_in_inset, () -> tune(true)); addButton(controls, insetButton);
-        swapButton = button(R.string.swap, () -> player.swap()); addButton(controls, swapButton);
-        closeInset = button(R.string.close_inset, () -> closeInset(watchButton)); addButton(controls, closeInset);
-        starButton = button("☆", this::favoriteSelected); addButton(controls, starButton);
-        stage.addView(scrollBar(controls));
-
         shell.addOnLayoutChangeListener((v, l, t, r, b, ol, ot, or, ob) -> {
             if (r - l == or - ol) return;
             boolean compact = r - l < dp(700);
@@ -752,10 +747,6 @@ public final class MainActivity extends ComponentActivity {
         if (api == null || selectedName == null) return;
         selectedName.setText(selected == null ? getString(R.string.no_channel_selected) : selected.label());
         programText.setText(selected == null ? "" : guideLine(selected.id(), true));
-        boolean starred = selected != null && favorites.contains(selected.id());
-        boolean saving = selected != null && pendingFavorites.contains(selected.id());
-        starButton.setText(saving ? R.string.saving : starred ? R.string.remove_favorite : R.string.add_favorite);
-        starButton.setEnabled(selected != null);
         if (guideButton.hasFocus() && selected == null) queryButton.requestFocusFromTouch();
         guideButton.setEnabled(selected != null);
         boolean tuned = isPlayingSelection();
@@ -764,13 +755,7 @@ public final class MainActivity extends ComponentActivity {
         previewLabel.setText(playing == null ? "" : getString(paused ? R.string.paused_channel : R.string.watching_channel, playing.label()));
         previewLabel.setVisibility(!fullscreen && playing != null && (paused || (!tuned && player.primaryStatus().live()))
                 ? View.VISIBLE : View.GONE);
-        watchButton.setText(!tuned ? R.string.play_channel : player.primaryStatus().failed() ? R.string.retry : R.string.full_screen);
-        watchButton.setEnabled(selected != null);
-        insetButton.setVisibility(player.primary() == null ? View.GONE : View.VISIBLE);
-        Channels.Channel insetChannel = player.secondary();
-        boolean inInset = selected != null && insetChannel != null && selected.id().equals(insetChannel.id());
-        insetButton.setText(inInset && player.secondaryStatus().failed() ? R.string.retry_inset : R.string.play_in_inset);
-        insetButton.setEnabled(selected != null && !tuned && (!inInset || player.secondaryStatus().failed()));
+
     }
 
     private void favoriteSelected() {
@@ -850,8 +835,6 @@ public final class MainActivity extends ComponentActivity {
         if (!player.canPause() && watchPause.hasFocus()) returnToChannels.requestFocus();
         watchPause.setEnabled(player.canPause());
         watchPause.setText(status == Playback.Status.PAUSED ? R.string.resume_live : R.string.pause);
-        swapButton.setVisibility(small == null ? View.GONE : View.VISIBLE);
-        closeInset.setVisibility(small == null ? View.GONE : View.VISIBLE);
         watchSwap.setVisibility(small == null ? View.GONE : View.VISIBLE);
         watchClose.setVisibility(small == null ? View.GONE : View.VISIBLE);
         root.setKeepScreenOn(foreground && player.hasVideo());
@@ -883,15 +866,15 @@ public final class MainActivity extends ComponentActivity {
     private void setFullscreen(boolean enabled) {
         if (fullscreen == enabled || video == null) return;
         fullscreen = enabled;
-        video.setFocusable(enabled);
+        video.setForeground(null);
         revealKey = KeyEvent.KEYCODE_UNKNOWN;
         ui.removeCallbacks(hideWatchControls);
         ViewGroup previous = (ViewGroup) video.getParent();
         if (enabled) {
             previous.removeView(video); shell.setVisibility(View.GONE);
             root.addView(video, new FrameLayout.LayoutParams(-1, -1));
-            showWatchControls();
-            returnToChannels.requestFocus();
+            watchOverlay.setVisibility(View.GONE);
+            video.requestFocus();
         } else {
             root.removeView(video);
             stage.addView(video, 0, new LinearLayout.LayoutParams(-1, 0, 1));
