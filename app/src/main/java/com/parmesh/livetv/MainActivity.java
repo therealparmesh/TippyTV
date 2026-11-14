@@ -99,7 +99,6 @@ public final class MainActivity extends ComponentActivity {
     private int guideGeneration;
     private volatile long catalogGeneration;
     private FrameLayout root, video, inset;
-    private PlayerView mainSurface, insetSurface;
     private LinearLayout shell, stage, emptyState, pager;
     private HorizontalScrollView watchOverlay;
     private int revealKey = KeyEvent.KEYCODE_UNKNOWN;
@@ -447,7 +446,7 @@ public final class MainActivity extends ComponentActivity {
             return true;
         });
         stage.addView(video, new LinearLayout.LayoutParams(-1, 0, 1));
-        mainSurface = new PlayerView(this); mainSurface.setUseController(false);
+        PlayerView mainSurface = new PlayerView(this); mainSurface.setUseController(false);
         mainSurface.setFocusable(false); mainSurface.setKeepContentOnPlayerReset(false);
         video.addView(mainSurface, new FrameLayout.LayoutParams(-1, -1));
         mainMessage = text("", 18, TEXT);
@@ -465,7 +464,7 @@ public final class MainActivity extends ComponentActivity {
         inset = new FrameLayout(this); inset.setBackground(box(0xff171719, ACCENT, 0));
         inset.setContentDescription(getString(R.string.muted_inset));
         inset.setPadding(dp(2), dp(2), dp(2), dp(2));
-        insetSurface = (PlayerView) getLayoutInflater().inflate(R.layout.inset_player, inset, false);
+        PlayerView insetSurface = (PlayerView) getLayoutInflater().inflate(R.layout.inset_player, inset, false);
         insetSurface.setFocusable(false);
         inset.addView(insetSurface, new FrameLayout.LayoutParams(-1, -1));
         insetMessage = text("", 14, TEXT); insetMessage.setGravity(Gravity.CENTER);
