@@ -892,7 +892,7 @@ public final class MainActivity extends ComponentActivity {
         p.bottomMargin = dp(fullscreen ? WATCH_BAR_HEIGHT + 10 : 12); inset.setLayoutParams(p);
         mainMessage.setPadding(dp(fullscreen ? 48 : 22), dp(fullscreen ? 27 : 12),
                 dp(fullscreen ? 48 : 22), dp(fullscreen ? 27 : 12));
-        updateSelection();
+        updatePlayback();
         scheduleGuide();
     }
 

@@ -132,6 +132,14 @@ focused('1  Amber One')
 key(23)
 streams(1)
 time.sleep(4)
+key(85)
+key(22)
+key(23)
+focused('Channels')
+assert any(node.get('text') == 'Resume live' for node in nodes()), 'Entering fullscreen hid the paused-stream controls'
+key(4)
+focused('1  Amber One')
+key(85)
 key(20)
 focused('2  Blue Two')
 assert any(node.get('text') == 'Watching · 1  Amber One' for node in nodes()), 'Preview identifies the selected channel instead of the playing channel'
@@ -211,3 +219,20 @@ focused('1  Amber One')
 key(4)
 streams(0)
 print('PASS: two streams, pause/resume, auto-hide, reveal without activation, swap, close inset, Back, tuner cleanup')
+
+key(20)
+key(20)
+key(23)  # The fixture has no media source for channel 3.
+for _ in range(10):
+    if any('Could not open this channel' in node.get('text', '') for node in nodes()):
+        break
+else:
+    raise AssertionError('Fixture did not exercise failed tuning')
+key(22)
+key(23)
+focused('Channels')
+assert any(node.get('text') == 'Try again' for node in nodes()), 'Entering fullscreen hid failed-stream recovery'
+key(4)
+key(4)
+streams(0)
+print('PASS: entering fullscreen preserves paused and failed-stream controls')
