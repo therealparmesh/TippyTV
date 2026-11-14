@@ -30,7 +30,7 @@
     <string name="sign_in_not_saved">Signed in. This device could not save the session.</string>
     <string name="skip_backward">Back 50 channels</string>
     <string name="skip_forward">Forward 50 channels</string>
-    <string name="channel_actions_hint">Hold Select for channel options</string>
+    <string name="channel_actions_hint">← Skip 50 · Hold Select</string>
     <string name="muted_inset">Muted inset</string>
     <string name="search_hint">Channel name or number</string>
     <string name="find_channel">Find a channel</string>

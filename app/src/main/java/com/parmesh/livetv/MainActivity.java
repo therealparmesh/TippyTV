@@ -350,6 +350,8 @@ public final class MainActivity extends ComponentActivity {
                         && watchButton != null && watchButton.isEnabled()) {
                     return watchButton.requestFocus() || super.dispatchKeyEvent(event);
                 }
+                if (event.getAction() == KeyEvent.ACTION_DOWN && event.getKeyCode() == KeyEvent.KEYCODE_DPAD_LEFT
+                        && pager != null && pager.isShown()) return pager.getChildAt(0).requestFocus();
                 return handleRemoteKey(event) || super.dispatchKeyEvent(event);
             }
         };
@@ -399,6 +401,13 @@ public final class MainActivity extends ComponentActivity {
         Button next = button("+50", () -> page(50));
         next.setContentDescription(getString(R.string.skip_forward));
         addButton(pager, next);
+        for (Button pageButton : List.of(previous, next)) {
+            pageButton.setOnKeyListener((view, key, event) -> {
+                if (event.getAction() != KeyEvent.ACTION_DOWN || key != KeyEvent.KEYCODE_DPAD_UP) return false;
+                returnToSelectedChannel();
+                return true;
+            });
+        }
         TextView channelHelp = text(getString(R.string.channel_actions_hint), 14, DIM);
         channelHelp.setGravity(Gravity.CENTER_VERTICAL | Gravity.END);
         channelHelp.setSingleLine();
