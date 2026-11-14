@@ -35,6 +35,10 @@ final class Jellyfin {
         HttpFailure(int status) { super("Jellyfin returned HTTP " + status); this.status = status; }
     }
 
+    static final class NoCompatibleStream extends IOException {
+        NoCompatibleStream() { super("No compatible stream for this channel."); }
+    }
+
     final Session session;
     private final HttpUrl base;
 
@@ -218,7 +222,7 @@ final class Jellyfin {
         JSONObject result = request(url("Items").addPathSegment(channel).addPathSegment("PlaybackInfo").build(), "POST", body);
         JSONArray sources = result.optJSONArray("MediaSources");
         JSONObject source = sources == null ? null : sources.optJSONObject(0);
-        if (source == null) throw new IOException("Jellyfin could not open this channel.");
+        if (source == null) throw new NoCompatibleStream();
         String liveId = str(source, "LiveStreamId");
         String playId = str(result, "PlaySessionId");
         String container = str(source, "Container").split(",", 2)[0];
@@ -230,7 +234,7 @@ final class Jellyfin {
                 if (endpoint == null || !sameOrigin(base, endpoint)) throw new IOException("Invalid fallback stream address.");
                 return new Stream(endpoint, endpoint.encodedPath().endsWith(".m3u8"), liveId, playId, true);
             }
-            if (fallback || !source.optBoolean("SupportsDirectPlay")) throw new IOException("No compatible stream for this channel.");
+            if (fallback || !source.optBoolean("SupportsDirectPlay")) throw new NoCompatibleStream();
             HttpUrl remote = source.optBoolean("IsRemote") ? HttpUrl.parse(str(source, "Path")) : null;
             if (remote != null && !remote.host().equals("localhost") && !remote.host().equals("127.0.0.1")
                     && !remote.host().equals("::1")) {

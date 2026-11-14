@@ -8,7 +8,7 @@ ORIGIN=os.environ.get('JELLYFIN_QA_ORIGIN','http://10.0.2.2:18798')
 PORT=int(os.environ.get('JELLYFIN_QA_PORT','18798'))
 start=time.time()
 state={'open':{},'opened':0,'closed':0,'guide':0,'favorites':set(),'writes':0,
-       'tokens':set(),'logins':0,'logouts':0,'open_at_logout':None,'replacement':False,'guide_failure':False,'sequence_offset':0,'media_failure':0,'media_failures':0,'open_delay_ms':0}
+       'tokens':set(),'logins':0,'logouts':0,'open_at_logout':None,'replacement':False,'guide_failure':False,'sequence_offset':0,'media_failure':0,'media_failures':0,'open_delay_ms':0,'open_failure':0,'open_requests':0}
 quick_connect={}
 lock=threading.Lock()
 channels=[{'Id':'a','Name':'Amber One','ChannelNumber':'1'},{'Id':'b','Name':'Blue Two','ChannelNumber':'2'}]
@@ -114,6 +114,11 @@ class Handler(BaseHTTPRequestHandler):
             if not 0<=delay<=10_000:return self.result(400,{})
             with lock:state['open_delay_ms']=delay
             return self.result(204)
+        if path=='/qa/open_failure':
+            status=int(q.get('status',['0'])[0])
+            if status not in (0,503):return self.result(400,{})
+            with lock:state['open_failure']=status
+            return self.result(204)
         if path=='/qa/media_failure':
             status=int(q.get('status',['0'])[0])
             if status not in (0,403,503):return self.result(400,{})
@@ -126,8 +131,11 @@ class Handler(BaseHTTPRequestHandler):
             with lock:state['replacement']=q.get('enabled',['1'])[0]=='1'
             return self.result(204)
         if path.startswith('/Items/') and path.endswith('/PlaybackInfo'):
-            with lock:delay=state['open_delay_ms']
+            with lock:
+                state['open_requests']+=1
+                delay=state['open_delay_ms'];failure=state['open_failure']
             time.sleep(delay/1000)
+            if failure:return self.result(failure,{})
             channel=path.split('/')[2]
             if channel not in ('a','b'): return self.result(200,{'MediaSources':[]})
             with lock:

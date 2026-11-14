@@ -142,7 +142,7 @@ final class Playback {
             } catch (Exception error) {
                 ui.post(() -> {
                     if (slot.generation != generation) return;
-                    if (!fallback && !(error instanceof Jellyfin.HttpFailure http && (http.status == 401 || http.status == 403))) {
+                    if (!fallback && error instanceof Jellyfin.NoCompatibleStream) {
                         request(slot, api, channel, true);
                     } else {
                         slot.status = Status.TUNE_FAILED;

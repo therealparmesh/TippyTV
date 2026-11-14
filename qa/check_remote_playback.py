@@ -147,10 +147,25 @@ key(85)
 key(20)
 focused('2  Blue Two')
 assert any(node.get('text') == 'Watching · 1  Amber One' for node in nodes()), 'Preview identifies the selected channel instead of the playing channel'
+request('/qa/open_failure?status=503', {})
+before_requests = request('/qa/status')['open_requests']
 key(82)
 focused('Play channel')
 key(20)
 focused('Play in inset')
+key(23)
+for _ in range(10):
+    if any('Could not open this channel' in node.get('text', '') for node in nodes()):
+        break
+else:
+    raise AssertionError('Fixture did not exercise the inset tune failure')
+streams(1)
+assert request('/qa/status')['open_requests'] == before_requests + 1, 'Server error triggered unnecessary compatible-stream negotiation'
+request('/qa/open_failure?status=0', {})
+key(82)
+focused('Play channel')
+key(20)
+focused('Retry inset')
 key(23)
 streams(2)
 time.sleep(4)
@@ -226,12 +241,14 @@ print('PASS: two streams, pause/resume, auto-hide, reveal without activation, sw
 
 key(20)
 key(20)
+before_requests = request('/qa/status')['open_requests']
 key(23)  # The fixture has no media source for channel 3.
 for _ in range(10):
     if any('Could not open this channel' in node.get('text', '') for node in nodes()):
         break
 else:
     raise AssertionError('Fixture did not exercise failed tuning')
+assert request('/qa/status')['open_requests'] == before_requests + 2, 'Missing media source did not try the compatible profile'
 key(22)
 key(23)
 focused('Channels')
