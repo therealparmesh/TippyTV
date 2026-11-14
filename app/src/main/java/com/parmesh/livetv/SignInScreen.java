@@ -176,9 +176,9 @@ final class SignInScreen {
         card.addView(code, spaced(76, 14));
         Button retry = action(R.string.new_code, true, this::startCode);
         retry.setVisibility(View.GONE);
-        action(R.string.use_password, false, this::passwordPage);
-        Button back = action(R.string.change_server, false, this::changeServer);
-        present(back);
+        Button password = action(R.string.use_password, false, this::passwordPage);
+        action(R.string.change_server, false, this::changeServer);
+        present(password);
         status(activity.getString(R.string.requesting_code), true);
         int request = generation;
         Jellyfin client = Jellyfin.signInClient(server, device);
