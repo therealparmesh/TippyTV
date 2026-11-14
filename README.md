@@ -1,11 +1,11 @@
-# Jellyfin Live TV
+# TippyTV
 
 A standalone, Darcula-colored Android TV and Fire OS client for Jellyfin Live TV. It has no movie, show, recording, or library screens. No Google Play Services are required.
 
 ## Use it
 
 1. Sideload the APK on an Android-based Fire TV or Android TV device (Android 6/API 23 or later).
-2. Open **Jellyfin Live TV** and enter your server address. A `.local` hostname works when the server advertises it over multicast DNS on your LAN. Choose **Quick Connect** to approve the TV from Jellyfin on a phone or browser, or choose **Use a password**. The app stores the session token with Android Keystore protection.
+2. Open **TippyTV** and enter your server address. A `.local` hostname works when the server advertises it over multicast DNS on your LAN. Choose **Quick Connect** to approve the TV from Jellyfin on a phone or browser, or choose **Use a password**. The app stores the session token with Android Keystore protection.
 3. Press Select on a channel to play it. Select the playing channel again to enter full screen, or press Right to focus the video preview and press Select. **Back** returns to the selected channel. Full-screen controls start hidden. Press a direction or Select to show them; they hide after five seconds of playback. Use Play/Pause on the remote or **Pause** in full screen to pause the main picture; **Resume live** returns to the live edge.
 4. Hold **Select** on another channel, then choose **Play in inset**. The inset uses half the width and height of the playback area and stays muted. **Swap** moves audio and the large picture to the other channel. **Close inset** releases the second tuner.
 5. **Search** accepts names and channel numbers. **Favorites** uses Jellyfin favorites. **Jump** goes to a letter or to the first or last channel. Press Left from any channel to reach **−50** and **+50**. Press Up to return to the selected channel. Page, channel, and fast-forward or rewind buttons also skip 50 channels where supported.

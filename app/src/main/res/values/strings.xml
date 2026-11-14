@@ -106,7 +106,7 @@
         <item quantity="one">%d favorite</item>
         <item quantity="other">%d favorites</item>
     </plurals>
-    <string name="opening">Opening Jellyfin Live TV…</string>
+    <string name="opening">Opening TippyTV…</string>
     <string name="no_live_tv_access">This Jellyfin account does not have access to Live TV.</string>
     <string name="channels_load_failed">Could not load channels. Open Server and choose Refresh channels.</string>
     <string name="favorite_update_failed">Could not save this favorite. Try again.</string>

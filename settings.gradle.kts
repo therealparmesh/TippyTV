@@ -4,5 +4,5 @@ pluginManagement {
 dependencyResolutionManagement {
     repositories { mavenCentral(); google() }
 }
-rootProject.name = "Jellyfin Live TV"
+rootProject.name = "TippyTV"
 include(":app")

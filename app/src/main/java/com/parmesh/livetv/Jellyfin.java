@@ -66,7 +66,7 @@ final class Jellyfin {
     }
 
     private String authorization() {
-        return "MediaBrowser Client=\"Jellyfin Live TV\", Device=\"Android TV\", DeviceId=\""
+        return "MediaBrowser Client=\"TippyTV\", Device=\"Android TV\", DeviceId=\""
                 + session.device + "\", Version=\"" + BuildConfig.VERSION_NAME + "\""
                 + (session.token.isEmpty() ? "" : ", Token=\"" + session.token + "\"");
     }
@@ -215,7 +215,7 @@ final class Jellyfin {
                     .put("Protocol", "hls").put("Context", "Streaming").put("VideoCodec", "h264")
                     .put("AudioCodec", "aac").put("MaxAudioChannels", "2").put("MinSegments", 2);
             body.put("MaxStreamingBitrate", bitrate).put("MaxAudioChannels", 2)
-                    .put("DeviceProfile", new JSONObject().put("Name", "Jellyfin Live TV")
+                    .put("DeviceProfile", new JSONObject().put("Name", "TippyTV")
                             .put("MaxStreamingBitrate", bitrate)
                             .put("TranscodingProfiles", new JSONArray().put(hls)));
         }
