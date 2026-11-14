@@ -1046,8 +1046,11 @@ public final class MainActivity extends ComponentActivity {
             later.setEnabled(from < limit);
             now.setEnabled(!current);
             Date date = new Date(from);
-            caption.setText(getString(R.string.guide_window, guideDate.format(date), clock.format(date),
-                    clock.format(new Date(from + step))));
+            Date end = new Date(from + step);
+            String startDate = guideDate.format(date), endDate = guideDate.format(end);
+            caption.setText(startDate.equals(endDate)
+                    ? getString(R.string.guide_window, startDate, clock.format(date), clock.format(end))
+                    : getString(R.string.guide_window_overnight, startDate, clock.format(date), endDate, clock.format(end)));
             if (retry.hasFocus() || schedule.hasFocus()) (later.isEnabled() ? later : earlier).requestFocus();
             schedule.scrollTo(0, 0);
             List<Channels.Program> cached = epg.get(from, channel.id(), SystemClock.elapsedRealtime());

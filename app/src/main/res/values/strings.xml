@@ -57,6 +57,7 @@
     <string name="guide_current">Now</string>
     <string name="earlier">Earlier</string>
     <string name="later">Later</string>
+    <string name="guide_window_overnight">%1$s · %2$s –\n%3$s · %4$s</string>
     <string name="guide_window">%1$s · %2$s–%3$s</string>
     <string name="no_listings">No listings for this time.</string>
     <string name="now">NOW</string>
