@@ -12,6 +12,8 @@ import androidx.media3.common.PlaybackException;
 import androidx.media3.common.Player;
 import androidx.media3.common.util.UnstableApi;
 import androidx.media3.datasource.okhttp.OkHttpDataSource;
+import androidx.media3.datasource.HttpDataSource;
+import androidx.media3.exoplayer.upstream.DefaultLoadErrorHandlingPolicy;
 import androidx.media3.exoplayer.DefaultLoadControl;
 import androidx.media3.exoplayer.DefaultRenderersFactory;
 import androidx.media3.exoplayer.ExoPlayer;
@@ -54,7 +56,6 @@ final class Playback {
         boolean fallback;
         boolean playWhenReady = true;
         int liveWindowRetries;
-        Runnable bufferTimeout;
 
         boolean active() { return channel != null && !status.failed(); }
     }
@@ -169,16 +170,25 @@ final class Playback {
         var dataSource = new OkHttpDataSource.Factory(slot.api.streamClient());
         var renderers = new DefaultRenderersFactory(context).setEnableDecoderFallback(true);
         var load = new DefaultLoadControl.Builder()
-                .setBufferDurationsMs(6_000, 16_000, 750, 1_500).build();
+                .setBufferDurationsMs(6_000, 16_000, 2_000, 3_000).build();
+        var retry = new DefaultLoadErrorHandlingPolicy(Integer.MAX_VALUE) {
+            @Override public long getRetryDelayMsFor(LoadErrorInfo info) {
+                if (info.exception instanceof HttpDataSource.InvalidResponseCodeException http
+                        && http.responseCode != 408 && http.responseCode != 429 && http.responseCode < 500) {
+                    return C.TIME_UNSET;
+                }
+                return super.getRetryDelayMsFor(info);
+            }
+        };
         ExoPlayer player = new ExoPlayer.Builder(context, renderers)
-                .setMediaSourceFactory(new DefaultMediaSourceFactory(dataSource)).setLoadControl(load).build();
+                .setMediaSourceFactory(new DefaultMediaSourceFactory(dataSource).setLoadErrorHandlingPolicy(retry))
+                .setLoadControl(load).build();
         slot.player = player;
         configure(slot);
         view(slot).setPlayer(player);
         player.addListener(new Player.Listener() {
             @Override public void onPlaybackStateChanged(int state) {
                 if (slot.generation != generation) return;
-                updateBufferTimeout(slot, generation);
                 if (state == Player.STATE_ENDED) {
                     failed(slot, generation);
                 } else {
@@ -191,7 +201,6 @@ final class Playback {
             @Override public void onPlayWhenReadyChanged(boolean playing, int reason) {
                 if (slot.generation != generation) return;
                 slot.playWhenReady = playing;
-                updateBufferTimeout(slot, generation);
                 changed.run();
             }
 
@@ -263,23 +272,7 @@ final class Playback {
         changed.run();
     }
 
-    private void updateBufferTimeout(Slot slot, long generation) {
-        cancelBufferTimeout(slot);
-        if (slot.player.getPlayWhenReady() && slot.player.getPlaybackState() == Player.STATE_BUFFERING) {
-            slot.bufferTimeout = () -> failed(slot, generation);
-            ui.postDelayed(slot.bufferTimeout, 24_000);
-        }
-    }
-
-    private void cancelBufferTimeout(Slot slot) {
-        if (slot.bufferTimeout != null) {
-            ui.removeCallbacks(slot.bufferTimeout);
-            slot.bufferTimeout = null;
-        }
-    }
-
     private Jellyfin.Stream detach(Slot slot) {
-        cancelBufferTimeout(slot);
         ExoPlayer oldPlayer = slot.player;
         slot.player = null;
         view(slot).setPlayer(null);

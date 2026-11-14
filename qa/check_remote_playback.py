@@ -26,7 +26,8 @@ def request(path, data=None):
     req = urllib.request.Request(f'http://127.0.0.1:{args.port}{path}', data=body,
                                  headers={'Content-Type': 'application/json'})
     with urllib.request.urlopen(req, timeout=10) as response:
-        return json.load(response)
+        body = response.read()
+        return json.loads(body) if body else None
 
 
 def key(code):
@@ -158,6 +159,27 @@ else:
 controls_hidden()
 assert request('/qa/status')['opened'] == before_opened, 'Live-window recovery opened a new server stream'
 print('PASS: stale live window recovers without a new server stream', flush=True)
+
+request('/qa/media_failure?status=503', {})
+time.sleep(12)
+key(19)
+assert any('Buffering' in node.get('text', '') for node in nodes()), 'Outage did not exhaust the buffer'
+time.sleep(30)
+assert request('/qa/status')['opened'] == before_opened, 'Buffering opened another server stream'
+assert any('Buffering' in node.get('text', '') for node in nodes()), 'Stopped waiting during the outage'
+request('/qa/media_failure?status=0', {})
+for _ in range(12):
+    key(19)
+    tree = nodes()
+    if any(node.get('text') == 'Live' for node in tree) and not any('Buffering' in node.get('text', '') for node in tree):
+        break
+    time.sleep(1)
+else:
+    raise AssertionError('Playback did not resume after the outage')
+assert request('/qa/status')['opened'] == before_opened, 'Outage recovery opened another server stream'
+print('PASS: temporary media outage waits and resumes without reopening streams', flush=True)
+controls_hidden()
+
 key(23)
 focused('Channels')  # The reveal press must not also activate Channels.
 key(85)  # Physical Play/Pause must pause the main picture, preserving the inset.

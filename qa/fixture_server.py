@@ -8,7 +8,7 @@ ORIGIN=os.environ.get('JELLYFIN_QA_ORIGIN','http://10.0.2.2:18798')
 PORT=int(os.environ.get('JELLYFIN_QA_PORT','18798'))
 start=time.time()
 state={'open':{},'opened':0,'closed':0,'guide':0,'favorites':set(),'writes':0,
-       'tokens':set(),'logins':0,'logouts':0,'open_at_logout':None,'replacement':False,'guide_failure':False,'sequence_offset':0}
+       'tokens':set(),'logins':0,'logouts':0,'open_at_logout':None,'replacement':False,'guide_failure':False,'sequence_offset':0,'media_failure':0,'media_failures':0}
 quick_connect={}
 lock=threading.Lock()
 channels=[{'Id':'a','Name':'Amber One','ChannelNumber':'1'},{'Id':'b','Name':'Blue Two','ChannelNumber':'2'}]
@@ -55,6 +55,11 @@ class Handler(BaseHTTPRequestHandler):
                 for n in range(7) for x in ids if x in ('a','b') and begin+1800*n<last and begin+1800*(n+1)>first]
             page=int(q.get('startIndex',['0'])[0]);size=int(q.get('limit',['160'])[0])
             return self.result(200,{'Items':rows[page:page+size]})
+        if path.endswith(('.m3u8','.ts')):
+            with lock:
+                failure=state['media_failure']
+                if failure:state['media_failures']+=1
+            if failure:return self.result(failure,{})
         if path in ('/a.m3u8','/b.m3u8'):
             with lock:offset=state['sequence_offset']
             n=max(4,int((time.time()-start)/2))+offset; file=path[1]
@@ -104,6 +109,11 @@ class Handler(BaseHTTPRequestHandler):
         if path=='/qa/advance_live_window':
             with lock:state['sequence_offset']+=60
             return self.result(200,{})
+        if path=='/qa/media_failure':
+            status=int(q.get('status',['0'])[0])
+            if status not in (0,403,503):return self.result(400,{})
+            with lock:state['media_failure']=status
+            return self.result(204)
         if path=='/qa/guide_failure':
             with lock:state['guide_failure']=q.get('enabled',['1'])[0]=='1'
             return self.result(200,{})
