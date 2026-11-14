@@ -221,7 +221,7 @@ final class Jellyfin {
         if (source == null) throw new IOException("Jellyfin could not open this channel.");
         String liveId = str(source, "LiveStreamId");
         String playId = str(result, "PlaySessionId");
-        String container = str(source, "Container").split(",")[0];
+        String container = str(source, "Container").split(",", 2)[0];
         if (!container.matches("[a-zA-Z0-9]{1,12}")) container = "ts";
         String transcode = str(source, "TranscodingUrl");
         try {
