@@ -962,10 +962,12 @@ public final class MainActivity extends ComponentActivity {
         LinearLayout actions = new LinearLayout(this);
         Button earlier = button(R.string.earlier, null);
         Button later = button(R.string.later, null);
+        Button now = button(R.string.guide_current, null);
         Button close = button(R.string.close, dialog::dismiss);
         Button retry = button(R.string.retry, null);
         addButton(actions, earlier);
         addButton(actions, later);
+        addButton(actions, now);
         addButton(actions, close);
         dialog.add(actions, 14);
         Future<?>[] request = {null};
@@ -1003,10 +1005,12 @@ public final class MainActivity extends ComponentActivity {
         Runnable load = () -> {
             cancel.run();
             long from = window[0];
-            if (from == initial && earlier.hasFocus()) later.requestFocus();
+            boolean current = from == GuideCache.window(System.currentTimeMillis());
+            if ((from == initial && earlier.hasFocus()) || (current && now.hasFocus())) later.requestFocus();
             if (from == limit && later.hasFocus()) earlier.requestFocus();
             earlier.setEnabled(from > initial);
             later.setEnabled(from < limit);
+            now.setEnabled(!current);
             Date date = new Date(from);
             caption.setText(getString(R.string.guide_window, guideDate.format(date), clock.format(date),
                     clock.format(new Date(from + step))));
@@ -1024,8 +1028,12 @@ public final class MainActivity extends ComponentActivity {
             }
         };
         retry.setOnClickListener(view -> load.run());
-        earlier.setOnClickListener(view -> { window[0] -= step; load.run(); });
-        later.setOnClickListener(view -> { window[0] += step; load.run(); });
+        earlier.setOnClickListener(view -> { window[0] = Math.max(initial, window[0] - step); load.run(); });
+        later.setOnClickListener(view -> { window[0] = Math.min(limit, window[0] + step); load.run(); });
+        now.setOnClickListener(view -> {
+            window[0] = Math.max(initial, Math.min(limit, GuideCache.window(System.currentTimeMillis())));
+            load.run();
+        });
         dialog.onDismiss(cancel);
         load.run();
         dialog.show(later);

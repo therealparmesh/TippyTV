@@ -52,6 +52,7 @@
     <string name="sign_out_title">Sign out of Jellyfin?</string>
     <string name="sign_out_description">Playback will stop on this TV.</string>
     <string name="stay_signed_in">Stay signed in</string>
+    <string name="guide_current">Now</string>
     <string name="earlier">Earlier</string>
     <string name="later">Later</string>
     <string name="guide_window">%1$s · %2$s–%3$s</string>
