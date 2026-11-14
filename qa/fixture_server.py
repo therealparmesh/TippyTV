@@ -8,7 +8,7 @@ ORIGIN=os.environ.get('JELLYFIN_QA_ORIGIN','http://10.0.2.2:18798')
 PORT=int(os.environ.get('JELLYFIN_QA_PORT','18798'))
 start=time.time()
 state={'open':{},'opened':0,'closed':0,'guide':0,'favorites':set(),'writes':0,
-       'tokens':set(),'logins':0,'logouts':0,'open_at_logout':None,'replacement':False,'guide_failure':False}
+       'tokens':set(),'logins':0,'logouts':0,'open_at_logout':None,'replacement':False,'guide_failure':False,'sequence_offset':0}
 quick_connect={}
 lock=threading.Lock()
 channels=[{'Id':'a','Name':'Amber One','ChannelNumber':'1'},{'Id':'b','Name':'Blue Two','ChannelNumber':'2'}]
@@ -56,8 +56,10 @@ class Handler(BaseHTTPRequestHandler):
             page=int(q.get('startIndex',['0'])[0]);size=int(q.get('limit',['160'])[0])
             return self.result(200,{'Items':rows[page:page+size]})
         if path in ('/a.m3u8','/b.m3u8'):
-            n=max(4,int((time.time()-start)/2)); file=path[1]
-            lines=['#EXTM3U','#EXT-X-VERSION:3','#EXT-X-TARGETDURATION:2',f'#EXT-X-MEDIA-SEQUENCE:{n-4}']
+            with lock:offset=state['sequence_offset']
+            n=max(4,int((time.time()-start)/2))+offset; file=path[1]
+            lines=['#EXTM3U','#EXT-X-VERSION:3','#EXT-X-TARGETDURATION:2',f'#EXT-X-MEDIA-SEQUENCE:{n-4}',
+                   f'#EXT-X-DISCONTINUITY-SEQUENCE:{(n+7)//12}']
             for i in range(n-4,n+1):
                 if i%12==0: lines.append('#EXT-X-DISCONTINUITY')
                 lines.extend(['#EXTINF:2.0,',f'{file}{i%12}.ts'])
@@ -99,6 +101,9 @@ class Handler(BaseHTTPRequestHandler):
                 if valid:
                     state['tokens'].remove(token);state['logouts']+=1;state['open_at_logout']=len(state['open'])
             return self.result(204 if valid else 401)
+        if path=='/qa/advance_live_window':
+            with lock:state['sequence_offset']+=60
+            return self.result(200,{})
         if path=='/qa/guide_failure':
             with lock:state['guide_failure']=q.get('enabled',['1'])[0]=='1'
             return self.result(200,{})

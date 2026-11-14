@@ -135,6 +135,21 @@ key(22)
 focused('Full screen')
 key(23)
 controls_hidden()
+pid = adb('shell', 'pidof', 'com.parmesh.livetv').decode().strip()
+def live_window_errors():
+    return adb('logcat', '-d', '--pid=' + pid, '-s', 'ExoPlayerImplInternal:E').count(b'BehindLiveWindowException')
+before_errors = live_window_errors()
+before_opened = request('/qa/status')['opened']
+request('/qa/advance_live_window', {})
+for _ in range(15):
+    time.sleep(2)
+    if live_window_errors() > before_errors:
+        break
+else:
+    raise AssertionError('Fixture did not exercise live-window recovery')
+controls_hidden()
+assert request('/qa/status')['opened'] == before_opened, 'Live-window recovery opened a new server stream'
+print('PASS: stale live window recovers without a new server stream', flush=True)
 key(23)
 focused('Channels')  # The reveal press must not also activate Channels.
 key(85)  # Physical Play/Pause must pause the main picture, preserving the inset.

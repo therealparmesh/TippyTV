@@ -53,6 +53,7 @@ final class Playback {
         Status status = Status.IDLE;
         boolean fallback;
         boolean playWhenReady = true;
+        int liveWindowRetries;
         Runnable bufferTimeout;
 
         boolean active() { return channel != null && !status.failed(); }
@@ -123,6 +124,7 @@ final class Playback {
         slot.api = api;
         slot.channel = channel;
         slot.fallback = fallback;
+        slot.liveWindowRetries = 0;
         slot.status = fallback ? Status.COMPATIBLE : Status.TUNING;
         changed.run();
         boolean small = slot == secondary;
@@ -194,13 +196,19 @@ final class Playback {
             }
 
             @Override public void onIsPlayingChanged(boolean playing) {
-                if (slot.generation == generation) changed.run();
+                if (slot.generation != generation) return;
+                if (playing) slot.liveWindowRetries = 0;
+                changed.run();
             }
 
             @Override public void onPlayerError(PlaybackException error) {
                 if (slot.generation != generation) return;
-                // Decoder exhaustion on the second player shouldn't interrupt the first.
-                if (slot == secondary && error.errorCode == PlaybackException.ERROR_CODE_DECODER_INIT_FAILED) {
+                // A stale live position is recoverable without opening a converted stream.
+                if (error.errorCode == PlaybackException.ERROR_CODE_BEHIND_LIVE_WINDOW && slot.liveWindowRetries++ < 2) {
+                    player.seekToDefaultPosition();
+                    player.prepare();
+                } else if (slot == secondary && error.errorCode == PlaybackException.ERROR_CODE_DECODER_INIT_FAILED) {
+                    // Decoder exhaustion on the second player shouldn't interrupt the first.
                     finishWithError(slot, Status.INSET_FAILED);
                 } else {
                     failed(slot, generation);
