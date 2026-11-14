@@ -301,6 +301,7 @@ public final class MainActivity extends ComponentActivity {
         LinearLayout.LayoutParams content = new LinearLayout.LayoutParams(-1, 0, 1);
         content.topMargin = dp(8); shell.addView(body, content);
         LinearLayout browser = vertical(); browser.setBackground(box(PANEL, EDGE, 12));
+        browser.setPadding(dp(2), dp(2), dp(2), dp(2));
         body.addView(browser, new LinearLayout.LayoutParams(0, -1, .42f));
         count = text("", 15, DIM);
         count.setSingleLine();
