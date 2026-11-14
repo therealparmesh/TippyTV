@@ -712,7 +712,6 @@ public final class MainActivity extends ComponentActivity {
         for (String letter : jumps.keySet()) {
             if (column++ % columns == 0) {
                 letters = new LinearLayout(this);
-                letters.setWeightSum(columns);
                 dialog.add(letters, 7);
             }
             Button choice = dialog.action(letter, () -> {
@@ -723,6 +722,11 @@ public final class MainActivity extends ComponentActivity {
             LinearLayout.LayoutParams cell = new LinearLayout.LayoutParams(0, dp(44), 1);
             cell.rightMargin = dp(8);
             letters.addView(choice, cell);
+        }
+        while (column++ % columns != 0) {
+            LinearLayout.LayoutParams cell = new LinearLayout.LayoutParams(0, dp(44), 1);
+            cell.rightMargin = dp(8);
+            letters.addView(new View(this), cell);
         }
         dialog.show(first);
     }
