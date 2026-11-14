@@ -682,6 +682,8 @@ public final class MainActivity extends ComponentActivity {
         dialog.add(field, 16);
         LinearLayout actions = new LinearLayout(this);
         Button submit = dialog.action(R.string.search, () -> applySearch(field.getText().toString()));
+        submit.setId(View.generateViewId());
+        field.setNextFocusDownId(submit.getId());
         addButton(actions, submit);
         if (!query.isBlank()) addButton(actions, dialog.action(R.string.clear_search, () -> applySearch("")));
         addButton(actions, button(R.string.cancel, dialog::dismiss));

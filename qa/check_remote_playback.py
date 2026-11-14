@@ -90,7 +90,11 @@ else:
 
 key(84)
 adb('shell', 'input', 'text', 'zzzznomatch')
-key(66)
+key(4)
+focused('zzzznomatch')
+key(20)
+focused('Search')
+key(23)
 focused('Clear search')
 assert not any(node.get('text') in ('−50', '+50') for node in nodes()), 'Empty list still has paging controls'
 key(23)
