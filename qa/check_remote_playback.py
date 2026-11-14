@@ -129,10 +129,14 @@ focused('1  Amber One')
 print('PASS: guide failure, in-place retry, and focus return', flush=True)
 key(92)
 focused('1  Amber One')
+request('/qa/open_delay?ms=3000', {})
 key(23)
+assert request('/qa/status')['open'] == 0, 'Fixture did not delay the tune response'
+key(127)  # Pause while PlaybackInfo is still pending, before a player exists.
 streams(1)
+request('/qa/open_delay?ms=0', {})
 time.sleep(4)
-key(85)
+assert any('Paused' in node.get('text', '') for node in nodes()), 'Pause during a pending tune was ignored'
 key(22)
 key(23)
 focused('Channels')

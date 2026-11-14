@@ -76,13 +76,17 @@ final class Playback {
         return slot.channel != null && !slot.status.failed() && paused ? Status.PAUSED : slot.status;
     }
 
-    boolean canPause() { return primary.player != null && (primary.status.live() || primary.status == Status.BUFFERING); }
+    boolean canPause() { return primary.active(); }
 
     void setPlaying(boolean playing) {
         if (!canPause()) return;
-        if (playing && !primary.player.getPlayWhenReady()) primary.player.seekToDefaultPosition();
         primary.playWhenReady = playing;
-        primary.player.setPlayWhenReady(playing);
+        if (primary.player == null) {
+            changed.run();
+        } else {
+            if (playing && !primary.player.getPlayWhenReady()) primary.player.seekToDefaultPosition();
+            primary.player.setPlayWhenReady(playing);
+        }
     }
     boolean hasVideo() {
         return (primary.player != null && primary.player.isPlaying())
