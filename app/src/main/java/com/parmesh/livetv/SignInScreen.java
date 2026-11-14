@@ -106,6 +106,7 @@ final class SignInScreen {
             field.requestFocus();
             return false;
         }
+        status("", false);
         WindowCompat.getInsetsController(activity.getWindow(), root).hide(WindowInsetsCompat.Type.ime());
         return true;
     }
