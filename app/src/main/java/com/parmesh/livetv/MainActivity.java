@@ -768,7 +768,6 @@ public final class MainActivity extends ComponentActivity {
         Jellyfin server = api;
         if (!pendingFavorites.add(channel.id())) return;
         boolean value = !favorites.contains(channel.id());
-        updateSelection();
         accounts.execute(() -> {
             boolean ok;
             try { server.favorite(channel.id(), value); ok = true; }
@@ -783,7 +782,6 @@ public final class MainActivity extends ComponentActivity {
                     if (favoritesOnly) renderFilter(false);
                     else refreshGuideRows();
                 } else toast(getString(R.string.favorite_update_failed));
-                updateSelection();
             });
         });
     }
