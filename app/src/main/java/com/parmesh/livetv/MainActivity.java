@@ -60,7 +60,7 @@ public final class MainActivity extends ComponentActivity {
     private static final int BAR = 0xff40434a, BLUE = 0xff3d526e;
     static final int TEXT = 0xffececf0, DIM = 0xffb8bbc5, ACCENT = 0xffffc66d, PRIMARY = 0xff4a576c;
     private static final int PAGE = 256, GUIDE_BATCH = 16;
-    private static final int GUIDE_HOURS = 3;
+    private static final int GUIDE_HOURS = 3, WATCH_BAR_HEIGHT = 81;
     private final Handler ui = new Handler(Looper.getMainLooper());
     private final ExecutorService accounts = Executors.newSingleThreadExecutor();
     private final ExecutorService catalog = Executors.newSingleThreadExecutor();
@@ -278,7 +278,7 @@ public final class MainActivity extends ComponentActivity {
         api = new Jellyfin(session);
         root = new FrameLayout(this); root.setBackgroundColor(BG);
         shell = vertical();
-        shell.setPadding(dp(30), dp(16), dp(30), dp(20));
+        shell.setPadding(dp(48), dp(27), dp(48), dp(27));
         root.addView(shell, new FrameLayout.LayoutParams(-1, -1));
         LinearLayout header = new LinearLayout(this); header.setGravity(Gravity.CENTER_VERTICAL);
         TextView brand = text(getString(R.string.app_name), 22, TEXT);
@@ -419,7 +419,8 @@ public final class MainActivity extends ComponentActivity {
             if (r-l == or-ol && b-t == ob-ot) return;
             FrameLayout.LayoutParams p = (FrameLayout.LayoutParams) inset.getLayoutParams();
             p.width = (r-l) / 2; p.height = (b-t) / 2;
-            p.rightMargin = dp(12); p.bottomMargin = dp(fullscreen ? 64 : 12);
+            p.rightMargin = dp(fullscreen ? 48 : 12);
+            p.bottomMargin = dp(fullscreen ? WATCH_BAR_HEIGHT + 10 : 12);
             inset.setLayoutParams(p);
         });
 
@@ -459,7 +460,7 @@ public final class MainActivity extends ComponentActivity {
         });
 
         LinearLayout watchBar = new LinearLayout(this); watchBar.setGravity(Gravity.CENTER_VERTICAL);
-        watchBar.setBackgroundColor(0xdf2b2b2b); watchBar.setPadding(dp(12), 0, dp(8), 0);
+        watchBar.setBackgroundColor(0xdf2b2b2b); watchBar.setPadding(dp(48), 0, dp(40), dp(27));
         watchTitle = text("", 16, TEXT); watchTitle.setSingleLine(); watchTitle.setEllipsize(TextUtils.TruncateAt.END);
         watchBar.addView(watchTitle, new LinearLayout.LayoutParams(0, -2, 1));
         watchStatus = text("", 14, DIM);
@@ -476,7 +477,7 @@ public final class MainActivity extends ComponentActivity {
         addButton(watchBar, watchRetry);
         watchSwap = button(R.string.swap, () -> player.swap()); addButton(watchBar, watchSwap);
         watchClose = button(R.string.close_inset, () -> closeInset(returnToChannels)); addButton(watchBar, watchClose);
-        FrameLayout.LayoutParams bottom = new FrameLayout.LayoutParams(-1, dp(54), Gravity.BOTTOM);
+        FrameLayout.LayoutParams bottom = new FrameLayout.LayoutParams(-1, dp(WATCH_BAR_HEIGHT), Gravity.BOTTOM);
         watchOverlay = scrollBar(watchBar);
         video.addView(watchOverlay, bottom);
         watchOverlay.setVisibility(View.GONE);
@@ -854,7 +855,10 @@ public final class MainActivity extends ComponentActivity {
             returnToSelectedChannel();
         }
         FrameLayout.LayoutParams p = (FrameLayout.LayoutParams) inset.getLayoutParams();
-        p.bottomMargin = dp(fullscreen ? 64 : 12); inset.setLayoutParams(p);
+        p.rightMargin = dp(fullscreen ? 48 : 12);
+        p.bottomMargin = dp(fullscreen ? WATCH_BAR_HEIGHT + 10 : 12); inset.setLayoutParams(p);
+        mainMessage.setPadding(dp(fullscreen ? 48 : 22), dp(fullscreen ? 27 : 12),
+                dp(fullscreen ? 48 : 22), dp(fullscreen ? 27 : 12));
         updateSelection();
         scheduleGuide();
     }
