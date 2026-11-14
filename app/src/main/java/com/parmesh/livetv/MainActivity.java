@@ -1301,7 +1301,9 @@ public final class MainActivity extends ComponentActivity {
                 int p = holder.getBindingAdapterPosition();
                 if (p != RecyclerView.NO_POSITION) {
                     pendingJump = null;
-                    focusedPosition = p; selected = getItem(p); updateSelection(); tune(false);
+                    focusedPosition = p; selected = getItem(p); updateSelection();
+                    if (isPlayingSelection() && !player.primaryStatus().failed()) setFullscreen(true);
+                    else tune(false);
                 }
             });
             row.setOnLongClickListener(v -> {
