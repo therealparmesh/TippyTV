@@ -1,6 +1,10 @@
 package com.parmesh.livetv;
 
 import android.Manifest;
+import android.content.ActivityNotFoundException;
+import android.content.Intent;
+import android.net.Uri;
+import android.provider.Settings;
 import android.content.pm.PackageManager;
 import android.content.res.ColorStateList;
 import android.graphics.Typeface;
@@ -106,10 +110,12 @@ public final class MainActivity extends ComponentActivity {
     private Consumer<Boolean> pendingNetworkAction;
     private final ActivityResultLauncher<String> networkPermission = registerForActivityResult(
             new ActivityResultContracts.RequestPermission(), granted -> {
-                var action = pendingNetworkAction;
-                pendingNetworkAction = null;
-                if (action != null && !destroyed) action.accept(granted);
+                if (granted) finishNetworkRequest(true);
+                else if (!destroyed && pendingNetworkAction != null) showNetworkSettings();
             });
+    private final ActivityResultLauncher<Intent> networkSettings = registerForActivityResult(
+            new ActivityResultContracts.StartActivityForResult(), result ->
+                    finishNetworkRequest(!needsLocalNetworkPermission()));
     private RecyclerView list;
     private LinearLayoutManager rows;
     private ChannelAdapter adapter;
@@ -167,6 +173,34 @@ public final class MainActivity extends ComponentActivity {
             pendingNetworkAction = next;
             networkPermission.launch(Manifest.permission.ACCESS_LOCAL_NETWORK);
         } else next.accept(true);
+    }
+
+    private void finishNetworkRequest(boolean granted) {
+        var action = pendingNetworkAction;
+        pendingNetworkAction = null;
+        if (action != null && !destroyed) action.accept(granted);
+    }
+
+    private void showNetworkSettings() {
+        TvDialog dialog = new TvDialog(this, getString(R.string.network_permission_title));
+        dialog.add(text(getString(R.string.local_network_access), 17, DIM), 12);
+        boolean[] openingSettings = {false};
+        Button settings = button(R.string.open_settings, () -> {
+            openingSettings[0] = true;
+            dialog.dismiss();
+            try {
+                networkSettings.launch(new Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
+                        Uri.parse("package:" + getPackageName())));
+            } catch (ActivityNotFoundException unavailable) {
+                finishNetworkRequest(false);
+            }
+        });
+        dialog.add(settings, 16);
+        dialog.add(button(R.string.cancel, dialog::dismiss), 8);
+        dialog.onDismiss(() -> {
+            if (!openingSettings[0]) finishNetworkRequest(false);
+        });
+        dialog.show(settings);
     }
 
     void showScreen(FrameLayout screen) {

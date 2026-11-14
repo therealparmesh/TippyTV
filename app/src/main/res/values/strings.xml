@@ -1,6 +1,8 @@
 <resources>
+    <string name="network_permission_title">Allow access to Jellyfin</string>
+    <string name="open_settings">Open settings</string>
     <string name="login_connecting">Connecting…</string>
-    <string name="local_network_access">Allow Local network access in Settings to connect to a Jellyfin server on your network.</string>
+    <string name="local_network_access">To reach Jellyfin on your network, open Settings → Permissions → Nearby devices and allow access.</string>
     <string name="guide_load_failed">Could not load listings. Check your connection and try again.</string>
     <string name="guide_loading">Loading guide…</string>
     <string name="favorite_channel_label">★&#160;&#160;%1$s</string>
