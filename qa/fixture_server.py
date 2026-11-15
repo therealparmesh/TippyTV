@@ -8,7 +8,7 @@ ORIGIN=os.environ.get('JELLYFIN_QA_ORIGIN','http://10.0.2.2:18798')
 PORT=int(os.environ.get('JELLYFIN_QA_PORT','18798'))
 start=time.time()
 state={'open':{},'opened':0,'closed':0,'guide':0,'favorites':set(),'writes':0,
-       'tokens':set(),'logins':0,'logouts':0,'open_at_logout':None,'replacement':False,'guide_failure':False,'sequence_offset':0,'media_failure':0,'media_failures':0,'open_delay_ms':0,'open_failure':0,'open_requests':0,'converted_requests':0,'interrupted':{},'peak_open':0}
+       'tokens':set(),'logins':0,'logouts':0,'open_at_logout':None,'replacement':False,'guide_failure':False,'sequence_offset':0,'media_failure':0,'media_failures':0,'open_delay_ms':0,'open_failure':0,'open_requests':0,'converted_requests':0,'interrupted':{},'peak_open':0,'slow_start':False,'slow_leases':set()}
 quick_connect={}
 lock=threading.Lock()
 channels=[{'Id':'a','Name':'Amber One','ChannelNumber':'1'},{'Id':'b','Name':'Blue Two','ChannelNumber':'2'}]
@@ -29,7 +29,7 @@ class Handler(BaseHTTPRequestHandler):
     def do_GET(self):
         u=urlsplit(self.path);q=parse_qs(u.query);path=u.path
         if path=='/qa/status':
-            with lock: out={**state,'open':len(state['open']),'favorites':sorted(state['favorites']),'tokens':len(state['tokens'])}
+            with lock: out={**state,'open':len(state['open']),'favorites':sorted(state['favorites']),'tokens':len(state['tokens']),'slow_leases':len(state['slow_leases'])}
             return self.result(200,out)
         if path=='/QuickConnect/Connect':
             with lock: attempt=quick_connect.get(q.get('secret',[''])[0])
@@ -74,7 +74,21 @@ class Handler(BaseHTTPRequestHandler):
             return self.result(200,('\n'.join(lines)+'\n').encode(),'application/vnd.apple.mpegurl')
         name=path.lstrip('/')
         if '/' not in name and name.endswith('.ts') and (ROOT/name).is_file():
-            return self.result(200,(ROOT/name).read_bytes(),'video/mp2t')
+            data=(ROOT/name).read_bytes();lease=q.get('lease',[''])[0]
+            with lock:
+                slow=state['slow_start'] and lease not in state['slow_leases']
+                if slow:state['slow_leases'].add(lease)
+            if slow:
+                self.send_response(200);self.send_header('Content-Type','video/mp2t')
+                self.send_header('Content-Length',str(len(data)+188*35));self.end_headers()
+                try:
+                    for _ in range(35):
+                        self.wfile.write(bytes([0x47,0x1f,0xff,0x10])+bytes([0xff])*184)
+                        self.wfile.flush();time.sleep(1)
+                    self.wfile.write(data)
+                except (BrokenPipeError,ConnectionResetError):pass
+                return
+            return self.result(200,data,'video/mp2t')
         return self.result(404,{})
     def do_POST(self):
         u=urlsplit(self.path);q=parse_qs(u.query);path=u.path
@@ -121,6 +135,9 @@ class Handler(BaseHTTPRequestHandler):
             status=int(q.get('status',['0'])[0])
             if status not in (0,503):return self.result(400,{})
             with lock:state['open_failure']=status
+            return self.result(204)
+        if path=='/qa/slow_start':
+            with lock:state['slow_start']=q.get('enabled',['1'])[0]=='1'
             return self.result(204)
         if path=='/qa/interrupt':
             channel=q.get('channel',['a'])[0];mode=q.get('mode',['503'])[0]

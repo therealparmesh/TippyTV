@@ -129,6 +129,18 @@ focused('1  Amber One')
 print('PASS: guide failure, in-place retry, and focus return', flush=True)
 key(92)
 focused('1  Amber One')
+# Slow but progressing media must not be torn down by a buffering deadline.
+request('/qa/slow_start?enabled=1', {})
+slow_baseline = request('/qa/status')['opened']
+key(23)
+time.sleep(45)
+assert request('/qa/status')['opened'] == slow_baseline + 1, 'Slow startup repeatedly reopened the channel'
+assert not any('Buffering' in n.get('text', '') or 'Opening channel' in n.get('text', '')
+               for n in nodes()), 'Slow startup never reached playback'
+key(4)
+streams(0)
+request('/qa/slow_start?enabled=0', {})
+print('PASS: slow startup finishes on the original session with provider-required headers', flush=True)
 request('/qa/open_delay?ms=3000', {})
 key(23)
 assert request('/qa/status')['open'] == 0, 'Fixture did not delay the tune response'

@@ -54,6 +54,7 @@ final class Playback {
         boolean fallback;
         boolean playWhenReady = true;
         int liveWindowRetries;
+        boolean reconnectPending;
         final Runnable reconnect = () -> request(this, api, channel, fallback, true);
 
         boolean active() { return channel != null && !status.failed(); }
@@ -198,6 +199,7 @@ final class Playback {
                 } else {
                     slot.status = state == Player.STATE_READY ? (stream.converted() ? Status.LIVE_COMPATIBLE : Status.LIVE)
                             : state == Player.STATE_BUFFERING ? Status.BUFFERING : slot.status;
+                    if (state == Player.STATE_READY) slot.reconnectPending = false;
                     updateRecovery(slot);
                     changed.run();
                 }
@@ -245,6 +247,7 @@ final class Playback {
     }
 
     private void reconnectLater(Slot slot) {
+        slot.reconnectPending = true;
         slot.status = Status.BUFFERING;
         updateRecovery(slot);
         changed.run();
@@ -252,9 +255,9 @@ final class Playback {
 
     private void updateRecovery(Slot slot) {
         ui.removeCallbacks(slot.reconnect);
-        // Brief stalls use Media3's retries. A stuck live session needs a fresh URL,
-        // not transcoding. Pausing, stopping, or changing channels cancels this timer.
-        if (slot.status == Status.BUFFERING && slot.playWhenReady) {
+        // Let Media3 finish loading; buffering alone is not a failed stream.
+        // Reopen only after a terminal network error or end-of-stream.
+        if (slot.reconnectPending && slot.playWhenReady) {
             ui.postDelayed(slot.reconnect, 30_000);
         }
     }
@@ -301,6 +304,7 @@ final class Playback {
 
     private Jellyfin.Stream detach(Slot slot) {
         ui.removeCallbacks(slot.reconnect);
+        slot.reconnectPending = false;
         ExoPlayer oldPlayer = slot.player;
         slot.player = null;
         view(slot).setPlayer(null);
