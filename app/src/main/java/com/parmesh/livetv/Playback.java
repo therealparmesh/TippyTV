@@ -180,7 +180,7 @@ final class Playback {
 
     private void start(Slot slot, Jellyfin.Stream stream, long generation) {
         slot.stream = stream;
-        var dataSource = new OkHttpDataSource.Factory(slot.api.streamClient());
+        var dataSource = new OkHttpDataSource.Factory(slot.api.streamClient()).setUserAgent(stream.userAgent());
         var renderers = new DefaultRenderersFactory(context).setEnableDecoderFallback(true);
         var load = new DefaultLoadControl.Builder()
                 .setBufferDurationsMs(6_000, 16_000, 2_000, 3_000).build();

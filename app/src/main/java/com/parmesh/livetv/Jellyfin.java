@@ -27,7 +27,7 @@ final class Jellyfin {
 
     record Session(String server, String token, String user, String device) {}
     record Page(List<Channels.Channel> channels, int consumed, int total) {}
-    record Stream(HttpUrl url, boolean hls, String liveId, String playId, boolean converted) {}
+    record Stream(HttpUrl url, boolean hls, String liveId, String playId, boolean converted, String userAgent) {}
     record QuickConnect(String code, String secret) {}
 
     static final class HttpFailure extends IOException {
@@ -225,6 +225,8 @@ final class Jellyfin {
         if (source == null) throw new NoCompatibleStream();
         String liveId = str(source, "LiveStreamId");
         String playId = str(result, "PlaySessionId");
+        JSONObject headers = source.optJSONObject("RequiredHttpHeaders");
+        String userAgent = headers == null ? null : headers.optString("User-Agent", null);
         String container = str(source, "Container").split(",", 2)[0];
         if (!container.matches("[a-zA-Z0-9]{1,12}")) container = "ts";
         String transcode = str(source, "TranscodingUrl");
@@ -232,20 +234,20 @@ final class Jellyfin {
             if (fallback && !transcode.isBlank()) {
                 HttpUrl endpoint = base.resolve(transcode);
                 if (endpoint == null || !sameOrigin(base, endpoint)) throw new IOException("Invalid fallback stream address.");
-                return new Stream(endpoint, endpoint.encodedPath().endsWith(".m3u8"), liveId, playId, true);
+                return new Stream(endpoint, endpoint.encodedPath().endsWith(".m3u8"), liveId, playId, true, userAgent);
             }
             if (fallback || !source.optBoolean("SupportsDirectPlay")) throw new NoCompatibleStream();
             HttpUrl remote = source.optBoolean("IsRemote") ? HttpUrl.parse(str(source, "Path")) : null;
             if (remote != null && !remote.host().equals("localhost") && !remote.host().equals("127.0.0.1")
                     && !remote.host().equals("::1")) {
-                return new Stream(remote, isHls(container, remote), liveId, playId, false);
+                return new Stream(remote, isHls(container, remote), liveId, playId, false, userAgent);
             }
             HttpUrl endpoint = url("Videos").addPathSegment(channel).addPathSegment("stream." + container)
                     .addQueryParameter("static", "true").addQueryParameter("mediaSourceId", str(source, "Id"))
                     .addQueryParameter("liveStreamId", liveId).addQueryParameter("playSessionId", playId).build();
-            return new Stream(endpoint, isHls(container, endpoint), liveId, playId, false);
+            return new Stream(endpoint, isHls(container, endpoint), liveId, playId, false, userAgent);
         } catch (IOException invalid) {
-            close(new Stream(base, false, liveId, playId, fallback));
+            close(new Stream(base, false, liveId, playId, fallback, userAgent));
             throw invalid;
         }
     }

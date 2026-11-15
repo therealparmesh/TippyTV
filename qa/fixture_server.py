@@ -56,6 +56,7 @@ class Handler(BaseHTTPRequestHandler):
             page=int(q.get('startIndex',['0'])[0]);size=int(q.get('limit',['160'])[0])
             return self.result(200,{'Items':rows[page:page+size]})
         if path.endswith(('.m3u8','.ts')):
+            if self.headers.get('User-Agent') != 'TippyTV-Fixture-Provider':return self.result(403,{})
             with lock:
                 interruption=state['interrupted'].get(q.get('lease',[''])[0])
                 failure=interruption if isinstance(interruption,int) else state['media_failure']
@@ -151,7 +152,7 @@ class Handler(BaseHTTPRequestHandler):
             with lock:
                 state['opened']+=1; key=str(state['opened']);state['open'][key]=channel
                 state['peak_open']=max(state['peak_open'],len(state['open']))
-            return self.result(200,{'PlaySessionId':key,'MediaSources':[{'Id':channel,'IsRemote':True,'Container':'hls','SupportsDirectPlay':True,'LiveStreamId':key,'Path':f'{ORIGIN}/{channel}.m3u8?lease={key}','TranscodingUrl':f'/{channel}.m3u8?lease={key}'}]})
+            return self.result(200,{'PlaySessionId':key,'MediaSources':[{'Id':channel,'IsRemote':True,'Container':'hls','SupportsDirectPlay':True,'RequiredHttpHeaders':{'User-Agent':'TippyTV-Fixture-Provider'},'LiveStreamId':key,'Path':f'{ORIGIN}/{channel}.m3u8?lease={key}','TranscodingUrl':f'/{channel}.m3u8?lease={key}'}]})
         if path=='/LiveStreams/Close':
             key=q.get('liveStreamId',[''])[0]
             with lock:
