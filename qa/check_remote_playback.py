@@ -191,24 +191,56 @@ controls_hidden()
 assert request('/qa/status')['opened'] == before_opened, 'Live-window recovery opened a new server stream'
 print('PASS: stale live window recovers without a new server stream', flush=True)
 
-request('/qa/media_failure?status=503', {})
-time.sleep(12)
-key(19)
-assert any('Buffering' in node.get('text', '') for node in nodes()), 'Outage did not exhaust the buffer'
-time.sleep(30)
-assert request('/qa/status')['opened'] == before_opened, 'Buffering opened another server stream'
-assert any('Buffering' in node.get('text', '') for node in nodes()), 'Stopped waiting during the outage'
-request('/qa/media_failure?status=0', {})
-for _ in range(12):
+def both_live():
     key(19)
     tree = nodes()
-    if any(node.get('text') == 'Live' for node in tree) and not any('Buffering' in node.get('text', '') for node in tree):
-        break
+    return (any(node.get('text') == 'Live' for node in tree)
+            and not any('Buffering' in node.get('text', '') or 'Tuning' in node.get('text', '')
+                        for node in tree))
+
+
+request('/qa/media_failure?status=503', {})
+time.sleep(3)
+request('/qa/media_failure?status=0', {})
+for _ in range(12):
+    if both_live():break
     time.sleep(1)
-else:
-    raise AssertionError('Playback did not resume after the outage')
-assert request('/qa/status')['opened'] == before_opened, 'Outage recovery opened another server stream'
-print('PASS: temporary media outage waits and resumes without reopening streams', flush=True)
+else:raise AssertionError('Playback did not resume after a brief outage')
+assert request('/qa/status')['opened'] == before_opened, 'Brief outage reopened streams'
+print('PASS: brief media outage resumes on existing streams', flush=True)
+
+# Only the old lease fails: recovery must obtain a fresh URL while the inset plays.
+for mode in ('503', '403', 'ended'):
+    baseline = request('/qa/status')
+    request('/qa/interrupt?channel=a&mode=' + mode, {})
+    deadline = time.monotonic() + 90
+    while time.monotonic() < deadline:
+        state = request('/qa/status')
+        if state['opened'] > baseline['opened'] and both_live():break
+        time.sleep(2)
+    else:raise AssertionError(('No fresh-session recovery', mode, state))
+    assert state['opened'] == baseline['opened'] + 1, ('Other stream reopened', mode, state)
+    assert state['closed'] == baseline['closed'] + 1, ('Old lease leaked', mode, state)
+    assert state['converted_requests'] == baseline['converted_requests'], 'Network recovery requested transcoding'
+    assert state['open'] == 2 and state['peak_open'] == 2, 'Recovery exceeded two tuner leases'
+    print('PASS: fresh-session recovery for ' + mode + ', inset preserved, no transcoding or tuner leak', flush=True)
+
+# A server outage during renegotiation must keep waiting, then recover.
+baseline = request('/qa/status')
+request('/qa/open_failure?status=503', {})
+request('/qa/interrupt?channel=a&mode=403', {})
+deadline = time.monotonic() + 90
+while request('/qa/status')['open_requests'] == baseline['open_requests']:
+    assert time.monotonic() < deadline, 'No attempt to refresh interrupted stream'
+    time.sleep(2)
+request('/qa/open_failure?status=0', {})
+deadline = time.monotonic() + 60
+while time.monotonic() < deadline:
+    if request('/qa/status')['open'] == 2 and both_live():break
+    time.sleep(2)
+else:raise AssertionError('Recovery stopped after a failed PlaybackInfo request')
+assert request('/qa/status')['converted_requests'] == baseline['converted_requests']
+print('PASS: server outage during recovery retries without transcoding', flush=True)
 controls_hidden()
 
 key(23)
@@ -257,3 +289,28 @@ key(4)
 key(4)
 streams(0)
 print('PASS: entering fullscreen preserves paused and failed-stream controls')
+
+# Cancel recovery while paused or stopped; delayed work must never resurrect playback.
+key(92)
+key(23)
+streams(1)
+time.sleep(4)
+request('/qa/interrupt?channel=a&mode=503', {})
+key(127)
+baseline = request('/qa/status')['open_requests']
+time.sleep(35)
+assert request('/qa/status')['open_requests'] == baseline, 'Paused stream reconnected'
+key(126)
+deadline = time.monotonic() + 75
+while request('/qa/status')['open_requests'] == baseline:
+    assert time.monotonic() < deadline, 'Resuming a stalled stream did not reconnect'
+    time.sleep(2)
+streams(1)
+request('/qa/interrupt?channel=a&mode=503', {})
+time.sleep(10)
+key(4)
+streams(0)
+baseline = request('/qa/status')['open_requests']
+time.sleep(35)
+assert request('/qa/status')['open_requests'] == baseline, 'Stopped stream resurrected from pending recovery'
+print('PASS: pause cancels recovery, resume reconnects, stop cancels pending recovery', flush=True)

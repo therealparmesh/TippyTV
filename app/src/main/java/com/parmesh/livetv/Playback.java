@@ -12,8 +12,6 @@ import androidx.media3.common.PlaybackException;
 import androidx.media3.common.Player;
 import androidx.media3.common.util.UnstableApi;
 import androidx.media3.datasource.okhttp.OkHttpDataSource;
-import androidx.media3.datasource.HttpDataSource;
-import androidx.media3.exoplayer.upstream.DefaultLoadErrorHandlingPolicy;
 import androidx.media3.exoplayer.DefaultLoadControl;
 import androidx.media3.exoplayer.DefaultRenderersFactory;
 import androidx.media3.exoplayer.ExoPlayer;
@@ -56,6 +54,7 @@ final class Playback {
         boolean fallback;
         boolean playWhenReady = true;
         int liveWindowRetries;
+        final Runnable reconnect = () -> request(this, api, channel, fallback, true);
 
         boolean active() { return channel != null && !status.failed(); }
     }
@@ -82,6 +81,7 @@ final class Playback {
         if (!canPause()) return;
         primary.playWhenReady = playing;
         if (primary.player == null) {
+            updateRecovery(primary);
             changed.run();
         } else {
             if (playing && !primary.player.getPlayWhenReady()) primary.player.seekToDefaultPosition();
@@ -123,6 +123,10 @@ final class Playback {
     }
 
     private void request(Slot slot, Jellyfin api, Channels.Channel channel, boolean fallback) {
+        request(slot, api, channel, fallback, false);
+    }
+
+    private void request(Slot slot, Jellyfin api, Channels.Channel channel, boolean fallback, boolean recovering) {
         long generation = ++slot.generation;
         Jellyfin.Stream old = detach(slot);
         Jellyfin previousApi = slot.api;
@@ -143,7 +147,12 @@ final class Playback {
                 ui.post(() -> {
                     if (slot.generation != generation) return;
                     if (!fallback && error instanceof Jellyfin.NoCompatibleStream) {
-                        request(slot, api, channel, true);
+                        request(slot, api, channel, true, recovering);
+                    } else if (recovering && error instanceof java.io.IOException
+                            && !(error instanceof Jellyfin.NoCompatibleStream)
+                            && (!(error instanceof Jellyfin.HttpFailure http) || http.status == 408
+                                    || http.status == 429 || http.status >= 500)) {
+                        reconnectLater(slot);
                     } else {
                         slot.status = Status.TUNE_FAILED;
                         changed.run();
@@ -175,17 +184,8 @@ final class Playback {
         var renderers = new DefaultRenderersFactory(context).setEnableDecoderFallback(true);
         var load = new DefaultLoadControl.Builder()
                 .setBufferDurationsMs(6_000, 16_000, 2_000, 3_000).build();
-        var retry = new DefaultLoadErrorHandlingPolicy(Integer.MAX_VALUE) {
-            @Override public long getRetryDelayMsFor(LoadErrorInfo info) {
-                if (info.exception instanceof HttpDataSource.InvalidResponseCodeException http
-                        && http.responseCode != 408 && http.responseCode != 429 && http.responseCode < 500) {
-                    return C.TIME_UNSET;
-                }
-                return super.getRetryDelayMsFor(info);
-            }
-        };
         ExoPlayer player = new ExoPlayer.Builder(context, renderers)
-                .setMediaSourceFactory(new DefaultMediaSourceFactory(dataSource).setLoadErrorHandlingPolicy(retry))
+                .setMediaSourceFactory(new DefaultMediaSourceFactory(dataSource))
                 .setLoadControl(load).build();
         slot.player = player;
         configure(slot);
@@ -194,10 +194,11 @@ final class Playback {
             @Override public void onPlaybackStateChanged(int state) {
                 if (slot.generation != generation) return;
                 if (state == Player.STATE_ENDED) {
-                    failed(slot, generation);
+                    reconnectLater(slot);
                 } else {
                     slot.status = state == Player.STATE_READY ? (stream.converted() ? Status.LIVE_COMPATIBLE : Status.LIVE)
                             : state == Player.STATE_BUFFERING ? Status.BUFFERING : slot.status;
+                    updateRecovery(slot);
                     changed.run();
                 }
             }
@@ -205,6 +206,7 @@ final class Playback {
             @Override public void onPlayWhenReadyChanged(boolean playing, int reason) {
                 if (slot.generation != generation) return;
                 slot.playWhenReady = playing;
+                updateRecovery(slot);
                 changed.run();
             }
 
@@ -220,6 +222,12 @@ final class Playback {
                 if (error.errorCode == PlaybackException.ERROR_CODE_BEHIND_LIVE_WINDOW && slot.liveWindowRetries++ < 2) {
                     player.seekToDefaultPosition();
                     player.prepare();
+                } else if (error.errorCode == PlaybackException.ERROR_CODE_IO_NETWORK_CONNECTION_FAILED
+                        || error.errorCode == PlaybackException.ERROR_CODE_IO_NETWORK_CONNECTION_TIMEOUT
+                        || error.errorCode == PlaybackException.ERROR_CODE_IO_BAD_HTTP_STATUS
+                        || error.errorCode == PlaybackException.ERROR_CODE_IO_UNSPECIFIED
+                        || error.errorCode == PlaybackException.ERROR_CODE_BEHIND_LIVE_WINDOW) {
+                    reconnectLater(slot);
                 } else if (slot == secondary && error.errorCode == PlaybackException.ERROR_CODE_DECODER_INIT_FAILED) {
                     // Decoder exhaustion on the second player shouldn't interrupt the first.
                     finishWithError(slot, Status.INSET_FAILED);
@@ -234,6 +242,21 @@ final class Playback {
         player.setPlayWhenReady(slot.playWhenReady);
         player.prepare();
 
+    }
+
+    private void reconnectLater(Slot slot) {
+        slot.status = Status.BUFFERING;
+        updateRecovery(slot);
+        changed.run();
+    }
+
+    private void updateRecovery(Slot slot) {
+        ui.removeCallbacks(slot.reconnect);
+        // Brief stalls use Media3's retries. A stuck live session needs a fresh URL,
+        // not transcoding. Pausing, stopping, or changing channels cancels this timer.
+        if (slot.status == Status.BUFFERING && slot.playWhenReady) {
+            ui.postDelayed(slot.reconnect, 30_000);
+        }
     }
 
     private void failed(Slot slot, long generation) {
@@ -277,6 +300,7 @@ final class Playback {
     }
 
     private Jellyfin.Stream detach(Slot slot) {
+        ui.removeCallbacks(slot.reconnect);
         ExoPlayer oldPlayer = slot.player;
         slot.player = null;
         view(slot).setPlayer(null);

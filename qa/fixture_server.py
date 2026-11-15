@@ -8,7 +8,7 @@ ORIGIN=os.environ.get('JELLYFIN_QA_ORIGIN','http://10.0.2.2:18798')
 PORT=int(os.environ.get('JELLYFIN_QA_PORT','18798'))
 start=time.time()
 state={'open':{},'opened':0,'closed':0,'guide':0,'favorites':set(),'writes':0,
-       'tokens':set(),'logins':0,'logouts':0,'open_at_logout':None,'replacement':False,'guide_failure':False,'sequence_offset':0,'media_failure':0,'media_failures':0,'open_delay_ms':0,'open_failure':0,'open_requests':0}
+       'tokens':set(),'logins':0,'logouts':0,'open_at_logout':None,'replacement':False,'guide_failure':False,'sequence_offset':0,'media_failure':0,'media_failures':0,'open_delay_ms':0,'open_failure':0,'open_requests':0,'converted_requests':0,'interrupted':{},'peak_open':0}
 quick_connect={}
 lock=threading.Lock()
 channels=[{'Id':'a','Name':'Amber One','ChannelNumber':'1'},{'Id':'b','Name':'Blue Two','ChannelNumber':'2'}]
@@ -57,7 +57,8 @@ class Handler(BaseHTTPRequestHandler):
             return self.result(200,{'Items':rows[page:page+size]})
         if path.endswith(('.m3u8','.ts')):
             with lock:
-                failure=state['media_failure']
+                interruption=state['interrupted'].get(q.get('lease',[''])[0])
+                failure=interruption if isinstance(interruption,int) else state['media_failure']
                 if failure:state['media_failures']+=1
             if failure:return self.result(failure,{})
         if path in ('/a.m3u8','/b.m3u8'):
@@ -67,7 +68,8 @@ class Handler(BaseHTTPRequestHandler):
                    f'#EXT-X-DISCONTINUITY-SEQUENCE:{(n+7)//12}']
             for i in range(n-4,n+1):
                 if i%12==0: lines.append('#EXT-X-DISCONTINUITY')
-                lines.extend(['#EXTINF:2.0,',f'{file}{i%12}.ts'])
+                lines.extend(['#EXTINF:2.0,',f'{file}{i%12}.ts?lease={q.get("lease",[""])[0]}'])
+            if interruption=='ended':lines.append('#EXT-X-ENDLIST')
             return self.result(200,('\n'.join(lines)+'\n').encode(),'application/vnd.apple.mpegurl')
         name=path.lstrip('/')
         if '/' not in name and name.endswith('.ts') and (ROOT/name).is_file():
@@ -119,6 +121,13 @@ class Handler(BaseHTTPRequestHandler):
             if status not in (0,503):return self.result(400,{})
             with lock:state['open_failure']=status
             return self.result(204)
+        if path=='/qa/interrupt':
+            channel=q.get('channel',['a'])[0];mode=q.get('mode',['503'])[0]
+            if mode not in ('403','503','ended'):return self.result(400,{})
+            with lock:
+                for lease,playing in state['open'].items():
+                    if playing==channel:state['interrupted'][lease]=mode if mode=='ended' else int(mode)
+            return self.result(204)
         if path=='/qa/media_failure':
             status=int(q.get('status',['0'])[0])
             if status not in (0,403,503):return self.result(400,{})
@@ -133,6 +142,7 @@ class Handler(BaseHTTPRequestHandler):
         if path.startswith('/Items/') and path.endswith('/PlaybackInfo'):
             with lock:
                 state['open_requests']+=1
+                if json.loads(payload).get('EnableTranscoding'):state['converted_requests']+=1
                 delay=state['open_delay_ms'];failure=state['open_failure']
             time.sleep(delay/1000)
             if failure:return self.result(failure,{})
@@ -140,7 +150,8 @@ class Handler(BaseHTTPRequestHandler):
             if channel not in ('a','b'): return self.result(200,{'MediaSources':[]})
             with lock:
                 state['opened']+=1; key=str(state['opened']);state['open'][key]=channel
-            return self.result(200,{'PlaySessionId':key,'MediaSources':[{'Id':channel,'IsRemote':True,'Container':'hls','SupportsDirectPlay':True,'LiveStreamId':key,'Path':f'{ORIGIN}/{channel}.m3u8','TranscodingUrl':f'/{channel}.m3u8'}]})
+                state['peak_open']=max(state['peak_open'],len(state['open']))
+            return self.result(200,{'PlaySessionId':key,'MediaSources':[{'Id':channel,'IsRemote':True,'Container':'hls','SupportsDirectPlay':True,'LiveStreamId':key,'Path':f'{ORIGIN}/{channel}.m3u8?lease={key}','TranscodingUrl':f'/{channel}.m3u8?lease={key}'}]})
         if path=='/LiveStreams/Close':
             key=q.get('liveStreamId',[''])[0]
             with lock:
