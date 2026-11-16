@@ -77,6 +77,10 @@ def pictures_visible():
     tree = nodes()
     inset = next(n for n in tree if n.get('content-desc') == 'Muted inset')
     left, top, right, bottom = map(int, re.findall(r'\d+', inset.get('bounds')))
+    assert abs((right - left) * (bottom - top) / (width * height) - .125) < .005, 'Inset is not one-eighth of playback area'
+    assert 0 < width - right < width * .03, 'Inset is not near the right edge'
+    if not any(n.get('text') == 'Channels' for n in tree):
+        assert 0 < height - bottom < height * .03, 'Inset did not return to the bottom corner'
     region = ((left + 8) / width, (top + 8) / height, (right - 8) / width, (bottom - 8) / height)
     for name, region in (('main', (.1, .1, .45, .4)), ('inset', region)):
         left, top, right, bottom = region

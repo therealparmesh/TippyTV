@@ -868,10 +868,10 @@ public final class MainActivity extends ComponentActivity {
 
     private void layoutInset() {
         FrameLayout.LayoutParams size = (FrameLayout.LayoutParams) inset.getLayoutParams();
-        int width = video.getWidth() / 2;
-        int height = video.getHeight() / 2;
-        int margin = dp(fullscreen ? 48 : 12);
-        int bottom = dp(fullscreen ? WATCH_BAR_HEIGHT + 10 : 12);
+        int width = Math.round(video.getWidth() / (float) Math.sqrt(8));
+        int height = Math.round(video.getHeight() / (float) Math.sqrt(8));
+        int margin = dp(12);
+        int bottom = margin + (fullscreen && watchOverlay.getVisibility() == View.VISIBLE ? dp(WATCH_BAR_HEIGHT) : 0);
         if (size.width == width && size.height == height && size.rightMargin == margin && size.bottomMargin == bottom) return;
         size.width = width; size.height = height;
         size.rightMargin = margin; size.bottomMargin = bottom;
