@@ -55,6 +55,7 @@ final class Playback {
         boolean playWhenReady = true;
         int liveWindowRetries;
         boolean reconnectPending;
+        final Runnable stablePlayback = () -> liveWindowRetries = 0;
         final Runnable reconnect = () -> request(this, api, channel, fallback, true);
 
         boolean active() { return channel != null && !status.failed(); }
@@ -214,7 +215,8 @@ final class Playback {
 
             @Override public void onIsPlayingChanged(boolean playing) {
                 if (slot.generation != generation) return;
-                if (playing) slot.liveWindowRetries = 0;
+                ui.removeCallbacks(slot.stablePlayback);
+                if (playing) ui.postDelayed(slot.stablePlayback, 10_000);
                 changed.run();
             }
 
@@ -305,6 +307,7 @@ final class Playback {
     private Jellyfin.Stream detach(Slot slot) {
         ui.removeCallbacks(slot.reconnect);
         slot.reconnectPending = false;
+        ui.removeCallbacks(slot.stablePlayback);
         ExoPlayer oldPlayer = slot.player;
         slot.player = null;
         view(slot).setPlayer(null);
