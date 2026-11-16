@@ -74,6 +74,8 @@ class Handler(BaseHTTPRequestHandler):
             return self.result(200,('\n'.join(lines)+'\n').encode(),'application/vnd.apple.mpegurl')
         name=path.lstrip('/')
         if '/' not in name and name.endswith('.ts') and (ROOT/name).is_file():
+            if interruption=='empty':
+                return self.result(200,(bytes([0x47,0x1f,0xff,0x10])+bytes([0xff])*184)*100,'video/mp2t')
             data=(ROOT/name).read_bytes();lease=q.get('lease',[''])[0]
             with lock:
                 slow=state['slow_start'] and lease not in state['slow_leases']
@@ -141,10 +143,10 @@ class Handler(BaseHTTPRequestHandler):
             return self.result(204)
         if path=='/qa/interrupt':
             channel=q.get('channel',['a'])[0];mode=q.get('mode',['503'])[0]
-            if mode not in ('403','503','ended'):return self.result(400,{})
+            if mode not in ('403','503','ended','empty'):return self.result(400,{})
             with lock:
                 for lease,playing in state['open'].items():
-                    if playing==channel:state['interrupted'][lease]=mode if mode=='ended' else int(mode)
+                    if playing==channel:state['interrupted'][lease]=mode if mode in ('ended','empty') else int(mode)
             return self.result(204)
         if path=='/qa/media_failure':
             status=int(q.get('status',['0'])[0])

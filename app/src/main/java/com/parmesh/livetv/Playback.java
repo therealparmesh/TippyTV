@@ -3,6 +3,7 @@ package com.parmesh.livetv;
 import android.content.Context;
 import android.os.Handler;
 import android.os.Looper;
+import android.os.SystemClock;
 import androidx.annotation.OptIn;
 import androidx.media3.common.AudioAttributes;
 import androidx.media3.common.C;
@@ -55,6 +56,7 @@ final class Playback {
         boolean playWhenReady = true;
         int liveWindowRetries;
         boolean reconnectPending;
+        Runnable progressCheck;
         final Runnable stablePlayback = () -> liveWindowRetries = 0;
         final Runnable reconnect = () -> request(this, api, channel, fallback, true);
 
@@ -190,6 +192,21 @@ final class Playback {
                 .setMediaSourceFactory(new DefaultMediaSourceFactory(dataSource))
                 .setLoadControl(load).build();
         slot.player = player;
+        FrameProgress progress = new FrameProgress();
+        player.setVideoFrameMetadataListener((presentationTimeUs, releaseTimeNs, format, mediaFormat) ->
+                progress.frame(presentationTimeUs, SystemClock.elapsedRealtime()));
+        slot.progressCheck = new Runnable() {
+            @Override public void run() {
+                if (slot.generation != generation) return;
+                if (progress.stalled(SystemClock.elapsedRealtime(), !slot.playWhenReady
+                        || player.getPlaybackSuppressionReason() != Player.PLAYBACK_SUPPRESSION_REASON_NONE)) {
+                    request(slot, slot.api, slot.channel, slot.fallback, true);
+                    return;
+                }
+                ui.postDelayed(this, 5_000);
+            }
+        };
+        ui.postDelayed(slot.progressCheck, 5_000);
         configure(slot);
         view(slot).setPlayer(player);
         player.addListener(new Player.Listener() {
@@ -308,6 +325,8 @@ final class Playback {
         ui.removeCallbacks(slot.reconnect);
         slot.reconnectPending = false;
         ui.removeCallbacks(slot.stablePlayback);
+        if (slot.progressCheck != null) ui.removeCallbacks(slot.progressCheck);
+        slot.progressCheck = null;
         ExoPlayer oldPlayer = slot.player;
         slot.player = null;
         view(slot).setPlayer(null);

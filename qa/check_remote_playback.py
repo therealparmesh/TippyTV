@@ -222,8 +222,9 @@ assert request('/qa/status')['opened'] == before_opened, 'Brief outage reopened 
 print('PASS: brief media outage resumes on existing streams', flush=True)
 
 # Only the old lease fails: recovery must obtain a fresh URL while the inset plays.
-for mode in ('503', '403', 'ended'):
+for mode in ('503', '403', 'ended', 'empty'):
     baseline = request('/qa/status')
+    errors_before = adb('logcat', '-d', '--pid=' + pid, '-s', 'ExoPlayerImplInternal:E').count(b'Playback error')
     request('/qa/interrupt?channel=a&mode=' + mode, {})
     deadline = time.monotonic() + 90
     while time.monotonic() < deadline:
@@ -231,6 +232,8 @@ for mode in ('503', '403', 'ended'):
         if state['opened'] > baseline['opened'] and both_live():break
         time.sleep(2)
     else:raise AssertionError(('No fresh-session recovery', mode, state))
+    if mode == 'empty':
+        assert adb('logcat', '-d', '--pid=' + pid, '-s', 'ExoPlayerImplInternal:E').count(b'Playback error') == errors_before, 'Empty-media case depended on a player error'
     assert state['opened'] == baseline['opened'] + 1, ('Other stream reopened', mode, state)
     assert state['closed'] == baseline['closed'] + 1, ('Old lease leaked', mode, state)
     assert state['converted_requests'] == baseline['converted_requests'], 'Network recovery requested transcoding'
