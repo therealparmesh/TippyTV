@@ -1,6 +1,7 @@
 """Check fullscreen focus and two-stream controls on an explicitly selected QA emulator.
 
 Requires the debug APK installed and fixture_server.py running. Never targets a TV.
+Pass --release-apk to test a release APK signed with the same key after seeding.
 """
 import argparse
 import json
@@ -14,6 +15,7 @@ import xml.etree.ElementTree as ET
 parser = argparse.ArgumentParser(description=__doc__)
 parser.add_argument('serial', help='QA emulator serial, for example emulator-5562')
 parser.add_argument('--port', type=int, default=18798)
+parser.add_argument('--release-apk', help='Install this APK after seeding the test session')
 args = parser.parse_args()
 if not args.serial.startswith('emulator-'):
     parser.error('Use a dedicated QA emulator. This check replaces its app session.')
@@ -108,6 +110,8 @@ adb('shell', 'am', 'force-stop', 'com.parmesh.livetv')
 adb('shell', 'run-as', 'com.parmesh.livetv', 'mkdir', '-p', 'files')
 adb('shell', 'run-as', 'com.parmesh.livetv', 'sh', '-c', "'cat > files/qa-session.json'", data=seed)
 adb('shell', 'am', 'instrument', '-w', 'com.parmesh.livetv/.SeedSession')
+if args.release_apk:
+    adb('install', '--no-incremental', '-r', args.release_apk)
 adb('shell', 'am', 'start', '-n', 'com.parmesh.livetv/.MainActivity')
 for _ in range(10):
     if any(node.get('text') == '1203 channels' for node in nodes()):
