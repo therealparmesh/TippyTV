@@ -36,3 +36,7 @@ The release APK in Gradle output is unsigned. The local preview is a signed, opt
 `qa/make-media.sh` generates two synthetic HLS feeds with FFmpeg. Run `python3 qa/fixture_server.py` after generating them. The fixture has 1,203 channels, a populated guide for the first two, favorites, and tuner counters at `/qa/status`. On an Android emulator, use server address `http://10.0.2.2:18798`. Set `JELLYFIN_QA_PORT` to use another port. Enter any nonempty fixture username. Never use a real password with the fixture.
 
 With the debug APK installed on a dedicated QA emulator and `adb` on your path, run `python3 qa/check_remote_playback.py emulator-5562` (substitute its serial). This replaces the emulator’s app session with a fixture session and checks two-stream playback, full-screen controls, remote focus, and tuner cleanup. Use `--port` when the fixture runs on another port.
+
+## License
+
+TippyTV is licensed under [GNU GPL version 3](LICENSE) (GPL-3.0-only). Bundled dependencies retain their own copyright notices and licenses; see [native dependency sources and build instructions](third_party/mpv/README.md).
