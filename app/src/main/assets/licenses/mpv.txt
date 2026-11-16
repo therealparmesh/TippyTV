@@ -1,0 +1,23 @@
+mpv / FFmpeg and their contributors
+
+This application includes unmodified native libraries from mpv-android 2026-09-17.
+The native build enables GPLv3 components. See GPL-3.0.txt and the corresponding
+source repositories for component copyrights and additional license notices.
+The CA bundle is distributed by the upstream mpv-android project.
+
+Native mpv source:
+https://github.com/mpv-player/mpv/tree/0b7ed670f7c353dd3dd4f8ae0fc788a181a15aa6
+Native FFmpeg source:
+https://github.com/FFmpeg/FFmpeg/tree/094a2f8a2a5e7fa64736e067de224ce28fdf5979
+Complete native dependency versions:
+https://github.com/mpv-android/mpv-android/releases/tag/2026-09-17
+Source download and build scripts for all bundled native dependencies:
+https://github.com/mpv-android/mpv-android/tree/fdf74f6830c47dbaa8a22ac79726e8303f1db5af/buildscripts
+
+TippyTV source, native bridge, dependency preparation and build instructions:
+https://github.com/therealparmesh/TippyTV
+https://github.com/therealparmesh/TippyTV/blob/main/third_party/mpv/README.md
+
+The upstream Android app and its singleton JNI wrapper are not included.
+The Android surface/JVM integration follows the upstream project's MIT-licensed
+example; its notice is in mpv-android-MIT.txt.

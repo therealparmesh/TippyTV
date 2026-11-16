@@ -5,14 +5,9 @@ import android.os.Handler;
 import android.os.Looper;
 import android.os.SystemClock;
 import android.media.AudioManager;
-import android.net.Uri;
 import androidx.media.AudioAttributesCompat;
 import androidx.media.AudioFocusRequestCompat;
 import androidx.media.AudioManagerCompat;
-import org.videolan.libvlc.LibVLC;
-import org.videolan.libvlc.Media;
-import org.videolan.libvlc.MediaPlayer;
-import org.videolan.libvlc.util.VLCVideoLayout;
 import java.util.List;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -31,12 +26,13 @@ final class Playback {
     }
 
     private final Handler ui = new Handler(Looper.getMainLooper());
-    private final LibVLC engine;
+    private final Context context;
+    private final Runnable swapped;
     private final AudioManager audio;
     private final AudioFocusRequestCompat audioFocus;
     private boolean resumeOnFocusGain;
-    private final VLCVideoLayout mainView;
-    private final VLCVideoLayout insetView;
+    private MpvView mainView;
+    private MpvView insetView;
     private final Runnable changed;
     private Slot primary = new Slot();
     private Slot secondary = new Slot();
@@ -46,8 +42,7 @@ final class Playback {
         volatile long generation;
         Jellyfin api;
         Jellyfin.Stream stream;
-        MediaPlayer player;
-        Media media;
+        volatile MpvPlayer player;
         Channels.Channel channel;
         Status status = Status.IDLE;
         boolean fallback;
@@ -59,9 +54,9 @@ final class Playback {
         boolean active() { return channel != null && !status.failed(); }
     }
 
-    Playback(Context context, VLCVideoLayout mainView, VLCVideoLayout insetView, Runnable changed) {
-        engine = new LibVLC(context.getApplicationContext(), new java.util.ArrayList<>(List.of("--no-video-title-show")));
-        engine.setUserAgent("TippyTV", "TippyTV/" + BuildConfig.VERSION_NAME);
+    Playback(Context context, MpvView mainView, MpvView insetView, Runnable changed, Runnable swapped) {
+        this.context = context.getApplicationContext();
+        this.swapped = swapped;
         audio = (AudioManager) context.getSystemService(Context.AUDIO_SERVICE);
         audioFocus = new AudioFocusRequestCompat.Builder(AudioManagerCompat.AUDIOFOCUS_GAIN)
                 .setAudioAttributes(new AudioAttributesCompat.Builder()
@@ -80,12 +75,12 @@ final class Playback {
         } else if (change == AudioManager.AUDIOFOCUS_LOSS_TRANSIENT || change == AudioManager.AUDIOFOCUS_LOSS) {
             resumeOnFocusGain = change == AudioManager.AUDIOFOCUS_LOSS_TRANSIENT && primary.playWhenReady;
             primary.playWhenReady = false;
-            if (primary.player != null && primary.player.isPlaying()) primary.player.pause();
+            if (primary.player != null) primary.player.pause();
             updateRecovery(primary);
             if (change == AudioManager.AUDIOFOCUS_LOSS) AudioManagerCompat.abandonAudioFocusRequest(audio, audioFocus);
             changed.run();
         } else if (change == AudioManager.AUDIOFOCUS_LOSS_TRANSIENT_CAN_DUCK && primary.player != null) {
-            primary.player.setVolume(20);
+            primary.player.volume(20);
         }
     }
 
@@ -114,7 +109,7 @@ final class Playback {
             // Reopen at the live edge rather than replaying data buffered before pause.
             request(primary, primary.api, primary.channel, primary.fallback);
         } else {
-            if (!playing && primary.player != null && primary.player.isPlaying()) primary.player.pause();
+            if (!playing && primary.player != null) primary.player.pause();
             updateRecovery(primary);
             changed.run();
         }
@@ -212,66 +207,61 @@ final class Playback {
 
     private void start(Slot slot, Jellyfin.Stream stream, long generation) {
         slot.stream = stream;
-        Media media = new Media(engine, Uri.parse(stream.url().toString()));
-        slot.media = media;
-        media.addOption(":network-caching=2000");
-        media.addOption(":adaptive-livedelay=6000");
-        media.addOption(":adaptive-maxbuffer=6000");
-        media.addOption(":http-reconnect");
-        if (stream.userAgent() != null) media.addOption(":http-user-agent=" + stream.userAgent());
-        media.setHWDecoderEnabled(true, false);
-        if (slot == primary && slot.playWhenReady && !requestAudioFocus()) slot.playWhenReady = false;
-        if (!slot.playWhenReady) media.addOption(":start-paused");
-        MediaPlayer player = new MediaPlayer(engine);
-        slot.player = player;
-        player.attachViews(view(slot), null, false, true);
-        player.setAudioOutputDevice("stereo");
-        configure(slot);
-        player.setEventListener(event -> {
+        MpvView surface = view(slot);
+        surface.whenReady(() -> {
             if (slot.generation != generation) return;
-            Status previous = slot.status;
-            switch (event.type) {
-                case MediaPlayer.Event.Opening:
-                    slot.status = Status.BUFFERING;
-                    break;
-                case MediaPlayer.Event.Buffering:
-                    slot.status = event.getBuffering() < 100 ? Status.BUFFERING
-                            : stream.converted() ? Status.LIVE_COMPATIBLE : Status.LIVE;
-                    break;
-                case MediaPlayer.Event.Playing:
-                    if (!slot.playWhenReady) { player.pause(); return; }
-                    slot.reconnectPending = false;
-                    updateRecovery(slot);
-                    slot.status = stream.converted() ? Status.LIVE_COMPATIBLE : Status.LIVE;
-                    break;
-                case MediaPlayer.Event.EndReached:
-                case MediaPlayer.Event.EncounteredError:
-                    reconnectLater(slot);
-                    return;
-                case MediaPlayer.Event.Paused:
-                    break;
-                default:
-                    return;
-            }
-            if (slot.status != previous || event.type == MediaPlayer.Event.Paused) changed.run();
-        });
-        FrameProgress progress = new FrameProgress();
-        slot.progressCheck = new Runnable() {
-            @Override public void run() {
-                if (slot.generation != generation) return;
-                long now = SystemClock.elapsedRealtime();
-                var stats = media.getStats();
-                if (stats != null && stats.displayedPictures > 0) progress.frame(stats.displayedPictures, now);
-                if (progress.stalled(now, !slot.playWhenReady)) {
-                    request(slot, slot.api, slot.channel, slot.fallback, true);
+            MpvView.Target target = surface.acquire();
+            if (target == null) return;
+            int width = surface.getWidth(), height = surface.getHeight();
+            slot.tuner.execute(() -> {
+                MpvPlayer opened;
+                try {
+                    opened = new MpvPlayer(context, target, stream, width, height);
+                } catch (java.io.IOException | RuntimeException | LinkageError error) {
+                    target.release();
+                    android.util.Log.e("TippyMpv", "Player initialization failed", error);
+                    ui.post(() -> { if (slot.generation == generation) finishWithError(slot, Status.STREAM_FAILED); });
                     return;
                 }
-                ui.postDelayed(this, 5_000);
-            }
-        };
-        ui.postDelayed(slot.progressCheck, 5_000);
-        player.setMedia(media);
-        player.play();
+                boolean stale;
+                synchronized (slot) {
+                    stale = slot.generation != generation;
+                    if (!stale) slot.player = opened;
+                }
+                if (stale) { opened.close(); return; }
+                ui.post(() -> {
+                    if (slot.generation != generation) return;
+                    if (slot == primary && slot.playWhenReady && !requestAudioFocus()) slot.playWhenReady = false;
+                    long firstFrame = surface.frames;
+                    configure(slot);
+                    opened.setPaused(!slot.playWhenReady);
+                    surface.resized = () -> opened.resize(surface.getWidth(), surface.getHeight());
+                    surface.resized.run();
+                    FrameProgress progress = new FrameProgress();
+                    slot.progressCheck = new Runnable() {
+                        @Override public void run() {
+                            if (slot.generation != generation) return;
+                            int state = opened.state();
+                            long now = SystemClock.elapsedRealtime();
+                            if ((state & 4) != 0 && surface.frames > firstFrame) progress.frame(surface.frames, now);
+                            if ((state & 1) != 0) {
+                                reconnectLater(slot);
+                                return;
+                            }
+                            if (progress.stalled(now, !slot.playWhenReady)) {
+                                request(slot, slot.api, slot.channel, slot.fallback, true);
+                                return;
+                            }
+                            Status next = (state & 4) == 0 || (state & 2) != 0 || surface.frames == firstFrame ? Status.BUFFERING
+                                    : stream.converted() ? Status.LIVE_COMPATIBLE : Status.LIVE;
+                            if (slot.status != next) { slot.status = next; changed.run(); }
+                            ui.postDelayed(this, 500);
+                        }
+                    };
+                    slot.progressCheck.run();
+                });
+            });
+        });
     }
 
     private void reconnectLater(Slot slot) {
@@ -299,29 +289,27 @@ final class Playback {
         changed.run();
     }
 
-    private VLCVideoLayout view(Slot slot) { return slot == primary ? mainView : insetView; }
+    private MpvView view(Slot slot) { return slot == primary ? mainView : insetView; }
 
     private void configure(Slot slot) {
-        if (slot.player != null) slot.player.setVolume(slot == secondary ? 0 : 100);
+        if (slot.player != null) slot.player.volume(slot == secondary ? 0 : 100);
     }
 
     void swap() {
         if (secondary.channel == null) return;
-        if (primary.player != null) primary.player.detachViews();
-        if (secondary.player != null) secondary.player.detachViews();
         resumeOnFocusGain = false;
         Slot old = primary;
         primary = secondary;
         secondary = old;
         configure(secondary);
-        configure(primary);
-        if (primary.player != null) primary.player.attachViews(mainView, null, false, true);
-        if (secondary.player != null) secondary.player.attachViews(insetView, null, false, true);
+        MpvView oldView = mainView; mainView = insetView; insetView = oldView;
+        swapped.run();
         if (primary.active() && primary.playWhenReady) {
             if (!requestAudioFocus()) setPlaying(false);
         } else {
             AudioManagerCompat.abandonAudioFocusRequest(audio, audioFocus);
         }
+        configure(primary);
         changed.run();
     }
 
@@ -330,26 +318,16 @@ final class Playback {
         slot.reconnectPending = false;
         if (slot.progressCheck != null) ui.removeCallbacks(slot.progressCheck);
         slot.progressCheck = null;
-        MediaPlayer oldPlayer = slot.player;
-        Media oldMedia = slot.media;
-        slot.player = null;
-        slot.media = null;
+        MpvView surface = view(slot);
+        surface.whenReady(null);
+        surface.resized = null;
+        MpvPlayer oldPlayer;
+        synchronized (slot) { oldPlayer = slot.player; slot.player = null; }
         if (oldPlayer != null) {
-            oldPlayer.setEventListener(null);
-            oldPlayer.setVolume(0);
-            oldPlayer.detachViews();
+            oldPlayer.volume(0);
+            // Teardown must finish before this slot opens another tuner/decoder.
+            slot.tuner.execute(oldPlayer::close);
         }
-        // Native stop can wait for network/decoder teardown. Keep it off the UI
-        // thread, and finish it before this slot opens its next tuner.
-        if (oldPlayer != null || oldMedia != null) slot.tuner.execute(() -> {
-            try {
-                if (oldPlayer != null) {
-                    try { oldPlayer.stop(); } finally { oldPlayer.release(); }
-                }
-            } finally {
-                if (oldMedia != null) oldMedia.release();
-            }
-        });
         Jellyfin.Stream old = slot.stream;
         slot.stream = null;
         return old;
@@ -392,7 +370,6 @@ final class Playback {
         AtomicInteger remaining = new AtomicInteger(2);
         Runnable closed = () -> {
             if (remaining.decrementAndGet() == 0) {
-                engine.release();
                 if (afterClose != null) afterClose.run();
             }
         };

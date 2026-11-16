@@ -70,6 +70,19 @@ def streams(expected):
 
 
 def pictures_visible():
+    # Resizing can temporarily precede the next GPU buffer. Require real pixels
+    # within a bounded interval, rather than accepting only a player status.
+    for attempt in range(6):
+        try:
+            check_pictures()
+            return
+        except AssertionError:
+            if attempt == 5:
+                raise
+            time.sleep(1)
+
+
+def check_pictures():
     # Assert pixels, not just the player's "Live" status: detached native surfaces
     # can keep decoding while rendering an entirely black picture.
     raw = adb('exec-out', 'screencap')
@@ -237,6 +250,8 @@ print('PASS: stale live window recovers without a new server stream', flush=True
 request('/qa/media_failure?status=503', {})
 time.sleep(3)
 request('/qa/media_failure?status=0', {})
+# Let cached media drain so stale Live status cannot conceal a failed reconnect.
+time.sleep(10)
 for _ in range(12):
     if both_live():break
     time.sleep(1)
@@ -356,3 +371,24 @@ baseline = request('/qa/status')['open_requests']
 time.sleep(35)
 assert request('/qa/status')['open_requests'] == baseline, 'Stopped stream resurrected from pending recovery'
 print('PASS: pause cancels recovery, resume reconnects, stop cancels pending recovery', flush=True)
+
+# Exercise overlapping native startup and channel replacement, then background
+# while the last player is still initializing. Only the selected player may survive.
+adb('shell', 'am', 'force-stop', 'com.parmesh.livetv')
+adb('shell', 'am', 'start', '-n', 'com.parmesh.livetv/.MainActivity')
+for _ in range(10):
+    if any(node.get('text') == '1203 channels' for node in nodes()):
+        break
+else:
+    raise AssertionError('Lineup did not reload for rapid tuning')
+key(20)
+focused('1  Amber One')
+before_requests = request('/qa/status')['open_requests']
+adb('shell', 'input', 'keyevent', *(['23', '20', '23', '19'] * 4))
+key(3)
+time.sleep(3)
+streams(0)
+assert request('/qa/status')['open_requests'] > before_requests, 'Rapid tuning did not exercise startup'
+crashes = adb('logcat', '-b', 'crash', '-d')
+assert b'Fatal signal' not in crashes and b'FATAL EXCEPTION' not in crashes, 'Player crashed during release regression'
+print('PASS: rapid channel replacement and background during startup release every tuner without a crash', flush=True)

@@ -79,7 +79,7 @@ final class Jellyfin {
         if (sameOrigin(base, endpoint)) {
             endpoint = endpoint.newBuilder().setQueryParameter("api_key", session.token).build();
         }
-        // LibVLC uses platform DNS. Resolve HTTP .local hosts through our mDNS
+        // Native playback uses platform DNS. Resolve HTTP .local hosts through our mDNS
         // resolver; keep HTTPS hostnames intact for certificate verification.
         if (endpoint.scheme().equals("http") && endpoint.host().endsWith(".local")) {
             endpoint = endpoint.newBuilder().host(new LocalDns().lookup(endpoint.host()).get(0).getHostAddress()).build();

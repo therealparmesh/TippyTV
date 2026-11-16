@@ -37,7 +37,6 @@ import androidx.core.view.ViewCompat;
 import androidx.core.view.WindowCompat;
 import androidx.core.view.WindowInsetsCompat;
 import androidx.core.view.WindowInsetsControllerCompat;
-import org.videolan.libvlc.util.VLCVideoLayout;
 import androidx.recyclerview.widget.DiffUtil;
 import androidx.recyclerview.widget.LinearLayoutManager;
 import androidx.recyclerview.widget.ListAdapter;
@@ -98,6 +97,7 @@ public final class MainActivity extends ComponentActivity {
     private FrameLayout root, video, inset;
     private LinearLayout shell, emptyState, pager;
     private View previewSlot;
+    private FrameLayout mainPicture;
     private HorizontalScrollView watchOverlay;
     private int revealKey = KeyEvent.KEYCODE_UNKNOWN;
     private TextView count, empty, selectedName, programText, mainMessage, insetMessage, watchTitle, watchStatus, previewLabel;
@@ -449,13 +449,15 @@ public final class MainActivity extends ComponentActivity {
         root.addView(video, new FrameLayout.LayoutParams(0, 0));
         root.addOnLayoutChangeListener((v, l, t, r, b, ol, ot, or, ob) -> layoutVideo());
         previewSlot.addOnLayoutChangeListener((v, l, t, r, b, ol, ot, or, ob) -> layoutVideo());
-        VLCVideoLayout mainSurface = new VLCVideoLayout(this);
+        MpvView mainSurface = new MpvView(this);
         mainSurface.setFocusable(false);
-        video.addView(mainSurface, new FrameLayout.LayoutParams(-1, -1));
+        mainPicture = new FrameLayout(this);
+        video.addView(mainPicture, new FrameLayout.LayoutParams(-1, -1));
+        mainPicture.addView(mainSurface, new FrameLayout.LayoutParams(-1, -1));
         mainMessage = text("", 18, TEXT);
         mainMessage.setGravity(Gravity.CENTER);
         mainMessage.setPadding(dp(22), dp(12), dp(22), dp(12));
-        video.addView(mainMessage, new FrameLayout.LayoutParams(-1, -1));
+        mainPicture.addView(mainMessage, new FrameLayout.LayoutParams(-1, -1));
         previewLabel = text("", 14, TEXT);
         previewLabel.setSingleLine();
         previewLabel.setEllipsize(TextUtils.TruncateAt.END);
@@ -467,7 +469,7 @@ public final class MainActivity extends ComponentActivity {
         inset = new FrameLayout(this); inset.setBackground(box(0xff171719, ACCENT, 0));
         inset.setContentDescription(getString(R.string.muted_inset));
         inset.setPadding(dp(2), dp(2), dp(2), dp(2));
-        VLCVideoLayout insetSurface = new VLCVideoLayout(this);
+        MpvView insetSurface = new MpvView(this);
         insetSurface.setFocusable(false);
         inset.addView(insetSurface, new FrameLayout.LayoutParams(-1, -1));
         insetMessage = text("", 14, TEXT); insetMessage.setGravity(Gravity.CENTER);
@@ -516,7 +518,7 @@ public final class MainActivity extends ComponentActivity {
         video.addView(watchOverlay, bottom);
         watchOverlay.setVisibility(View.GONE);
 
-        player = new Playback(this, mainSurface, insetSurface, this::updatePlayback);
+        player = new Playback(this, mainSurface, insetSurface, this::updatePlayback, this::swapPictures);
         showScreen(root);
         queryButton.requestFocusFromTouch();
         updateCount();
@@ -864,6 +866,27 @@ public final class MainActivity extends ComponentActivity {
     private void closeInset(Button fallback) {
         fallback.requestFocusFromTouch();
         player.stopInset();
+    }
+
+    private void swapPictures() {
+        FrameLayout previous = mainPicture; mainPicture = inset; inset = previous;
+        TextView message = mainMessage; mainMessage = insetMessage; insetMessage = message;
+        mainPicture.setPadding(0, 0, 0, 0);
+        mainPicture.setBackground(null);
+        mainPicture.setContentDescription(null);
+        mainPicture.setLayoutParams(new FrameLayout.LayoutParams(-1, -1));
+        mainMessage.setTextSize(18);
+        mainMessage.setPadding(dp(fullscreen ? 48 : 22), dp(fullscreen ? 27 : 12),
+                dp(fullscreen ? 48 : 22), dp(fullscreen ? 27 : 12));
+        inset.setPadding(dp(2), dp(2), dp(2), dp(2));
+        inset.setBackground(box(0xff171719, ACCENT, 0));
+        inset.setContentDescription(getString(R.string.muted_inset));
+        inset.setLayoutParams(new FrameLayout.LayoutParams(0, 0, Gravity.BOTTOM | Gravity.END));
+        insetMessage.setTextSize(14);
+        insetMessage.setPadding(0, 0, 0, 0);
+        inset.bringToFront();
+        previewLabel.bringToFront();
+        layoutInset();
     }
 
     private void layoutInset() {

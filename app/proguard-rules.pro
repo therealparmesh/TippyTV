@@ -1,3 +1,2 @@
-# LibVLC resolves its Java classes and members from native code.
-# Matches VideoLAN's application/app/proguard-rules.pro.
--keep class org.videolan.libvlc.** { *; }
+# Native JNI entry points are resolved by class and method name.
+-keep class com.parmesh.livetv.MpvPlayer { native <methods>; }
