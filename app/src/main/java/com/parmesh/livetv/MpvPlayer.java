@@ -30,7 +30,7 @@ final class MpvPlayer {
     MpvPlayer(Context context, MpvView.Target target, Jellyfin.Stream stream, int width, int height) throws IOException {
         this.target = target;
         handle = create(target.surface, stream.url().toString(),
-                stream.userAgent() == null ? "TippyTV/" + BuildConfig.VERSION_NAME : stream.userAgent(),
+                "TippyTV/" + BuildConfig.VERSION_NAME,
                 prepare(context), width, height);
     }
     int state() { return poll(handle); }

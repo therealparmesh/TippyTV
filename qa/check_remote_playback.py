@@ -62,7 +62,7 @@ def focused(text):
 def streams(expected):
     for _ in range(30):
         state = request('/qa/status')
-        if state['open'] == expected:
+        if state['open'] == expected and (expected != 0 or state['encodings'] == 0):
             return
         time.sleep(.5)
     raise AssertionError(state)
@@ -184,7 +184,7 @@ assert not any('Buffering' in n.get('text', '') or 'Opening channel' in n.get('t
 key(4)
 streams(0)
 request('/qa/slow_start?enabled=0', {})
-print('PASS: slow startup finishes on the original session with provider-required headers', flush=True)
+print('PASS: slow startup finishes on the original session through Jellyfin HLS', flush=True)
 request('/qa/open_delay?ms=3000', {})
 key(23)
 assert request('/qa/status')['open'] == 0, 'Fixture did not delay the tune response'

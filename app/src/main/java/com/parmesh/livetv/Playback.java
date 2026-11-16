@@ -253,7 +253,7 @@ final class Playback {
                                 return;
                             }
                             Status next = (state & 4) == 0 || (state & 2) != 0 || surface.frames == firstFrame ? Status.BUFFERING
-                                    : stream.converted() ? Status.LIVE_COMPATIBLE : Status.LIVE;
+                                    : stream.compatible() ? Status.LIVE_COMPATIBLE : Status.LIVE;
                             if (slot.status != next) { slot.status = next; changed.run(); }
                             ui.postDelayed(this, 500);
                         }

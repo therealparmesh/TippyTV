@@ -4,10 +4,9 @@ from datetime import datetime,timezone
 from pathlib import Path
 import json,time,threading,os,secrets
 ROOT=Path(os.environ.get('JELLYFIN_QA_MEDIA','/tmp/jellyfin-live-fixture'))
-ORIGIN=os.environ.get('JELLYFIN_QA_ORIGIN','http://10.0.2.2:18798')
 PORT=int(os.environ.get('JELLYFIN_QA_PORT','18798'))
 start=time.time()
-state={'open':{},'opened':0,'closed':0,'guide':0,'favorites':set(),'writes':0,
+state={'open':{},'encodings':set(),'opened':0,'closed':0,'guide':0,'favorites':set(),'writes':0,
        'tokens':set(),'logins':0,'logouts':0,'open_at_logout':None,'replacement':False,'guide_failure':False,'sequence_offset':0,'media_failure':0,'media_failures':0,'open_delay_ms':0,'open_failure':0,'open_requests':0,'converted_requests':0,'interrupted':{},'peak_open':0,'slow_start':False,'slow_leases':set()}
 quick_connect={}
 lock=threading.Lock()
@@ -29,7 +28,7 @@ class Handler(BaseHTTPRequestHandler):
     def do_GET(self):
         u=urlsplit(self.path);q=parse_qs(u.query);path=u.path
         if path=='/qa/status':
-            with lock: out={**state,'open':len(state['open']),'favorites':sorted(state['favorites']),'tokens':len(state['tokens']),'slow_leases':len(state['slow_leases'])}
+            with lock: out={**state,'open':len(state['open']),'encodings':len(state['encodings']),'favorites':sorted(state['favorites']),'tokens':len(state['tokens']),'slow_leases':len(state['slow_leases'])}
             return self.result(200,out)
         if path=='/QuickConnect/Connect':
             with lock: attempt=quick_connect.get(q.get('secret',[''])[0])
@@ -56,14 +55,16 @@ class Handler(BaseHTTPRequestHandler):
             page=int(q.get('startIndex',['0'])[0]);size=int(q.get('limit',['160'])[0])
             return self.result(200,{'Items':rows[page:page+size]})
         if path.endswith(('.m3u8','.ts')):
-            if self.headers.get('User-Agent') != 'TippyTV-Fixture-Provider':return self.result(403,{})
+            if not self.headers.get('User-Agent', '').startswith('TippyTV/'):return self.result(403,{})
             with lock:
                 interruption=state['interrupted'].get(q.get('lease',[''])[0])
                 failure=interruption if isinstance(interruption,int) else state['media_failure']
                 if failure:state['media_failures']+=1
             if failure:return self.result(failure,{})
         if path in ('/a.m3u8','/b.m3u8'):
-            with lock:offset=state['sequence_offset']
+            with lock:
+                state['encodings'].add(q.get('lease',[''])[0])
+                offset=state['sequence_offset']
             n=max(4,int((time.time()-start)/2))+offset; file=path[1]
             lines=['#EXTM3U','#EXT-X-VERSION:3','#EXT-X-TARGETDURATION:2',f'#EXT-X-MEDIA-SEQUENCE:{n-4}',
                    f'#EXT-X-DISCONTINUITY-SEQUENCE:{(n+7)//12}']
@@ -160,9 +161,14 @@ class Handler(BaseHTTPRequestHandler):
             with lock:state['replacement']=q.get('enabled',['1'])[0]=='1'
             return self.result(204)
         if path.startswith('/Items/') and path.endswith('/PlaybackInfo'):
+            profile=json.loads(payload)
+            if profile.get('EnableDirectPlay') is not False or not profile.get('AllowVideoStreamCopy') or not profile.get('AllowAudioStreamCopy'):
+                return self.result(400,{})
+            if not profile.get('DeviceProfile',{}).get('TranscodingProfiles'):
+                return self.result(400,{})
             with lock:
                 state['open_requests']+=1
-                if json.loads(payload).get('EnableTranscoding'):state['converted_requests']+=1
+                if profile.get('EnableTranscoding'):state['converted_requests']+=1
                 delay=state['open_delay_ms'];failure=state['open_failure']
             time.sleep(delay/1000)
             if failure:return self.result(failure,{})
@@ -171,7 +177,7 @@ class Handler(BaseHTTPRequestHandler):
             with lock:
                 state['opened']+=1; key=str(state['opened']);state['open'][key]=channel
                 state['peak_open']=max(state['peak_open'],len(state['open']))
-            return self.result(200,{'PlaySessionId':key,'MediaSources':[{'Id':channel,'IsRemote':True,'Container':'hls','SupportsDirectPlay':True,'RequiredHttpHeaders':{'User-Agent':'TippyTV-Fixture-Provider'},'LiveStreamId':key,'Path':f'{ORIGIN}/{channel}.m3u8?lease={key}','TranscodingUrl':f'/{channel}.m3u8?lease={key}'}]})
+            return self.result(200,{'PlaySessionId':key,'MediaSources':[{'Id':channel,'IsRemote':True,'Container':'hls','SupportsDirectPlay':False,'RequiredHttpHeaders':{'User-Agent':'TippyTV-Fixture-Provider'},'LiveStreamId':key,'Path':'https://provider.invalid/do-not-bypass-jellyfin.m3u8','TranscodingUrl':f'/{channel}.m3u8?lease={key}'}]})
         if path=='/LiveStreams/Close':
             key=q.get('liveStreamId',[''])[0]
             with lock:
@@ -182,7 +188,9 @@ class Handler(BaseHTTPRequestHandler):
             return self.result(200,{})
         return self.result(404,{})
     def do_DELETE(self):
-        path=urlsplit(self.path).path
+        parsed=urlsplit(self.path);path=parsed.path
+        if path=='/Videos/ActiveEncodings':
+            with lock:state['encodings'].discard(parse_qs(parsed.query).get('playSessionId',[''])[0])
         if '/FavoriteItems/' in path:
             with lock:state['favorites'].discard(path.split('/')[-1]);state['writes']+=1
         return self.result(204)

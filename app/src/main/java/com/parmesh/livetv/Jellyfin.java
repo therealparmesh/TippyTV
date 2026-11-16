@@ -27,7 +27,7 @@ final class Jellyfin {
 
     record Session(String server, String token, String user, String device) {}
     record Page(List<Channels.Channel> channels, int consumed, int total) {}
-    record Stream(HttpUrl url, String liveId, String playId, boolean converted, String userAgent) {}
+    record Stream(HttpUrl url, String liveId, String playId, boolean compatible) {}
     record QuickConnect(String code, String secret) {}
 
     static final class HttpFailure extends IOException {
@@ -208,57 +208,45 @@ final class Jellyfin {
     }
 
     Stream open(String channel, boolean fallback, boolean inset) throws IOException, JSONException {
+        int bitrate = fallback ? (inset ? 2_000_000 : 6_000_000) : 200_000_000;
+        int audioChannels = fallback ? 2 : 8;
+        JSONObject hls = new JSONObject().put("Type", "Video").put("Container", "ts")
+                .put("Protocol", "hls").put("Context", "Streaming")
+                .put("VideoCodec", fallback ? "h264" : "h264,hevc,mpeg2video")
+                .put("AudioCodec", fallback ? "aac" : "aac,ac3,eac3,mp3,mp2")
+                .put("MaxAudioChannels", Integer.toString(audioChannels)).put("MinSegments", 2);
+        // Let Jellyfin own the provider connection and negotiate HLS, including stream copy.
         JSONObject body = new JSONObject().put("UserId", session.user).put("AutoOpenLiveStream", true)
-                .put("EnableDirectPlay", !fallback).put("EnableDirectStream", true).put("EnableTranscoding", fallback);
-        if (fallback) {
-            int bitrate = inset ? 2_000_000 : 6_000_000;
-            JSONObject hls = new JSONObject().put("Type", "Video").put("Container", "ts")
-                    .put("Protocol", "hls").put("Context", "Streaming").put("VideoCodec", "h264")
-                    .put("AudioCodec", "aac").put("MaxAudioChannels", "2").put("MinSegments", 2);
-            body.put("MaxStreamingBitrate", bitrate).put("MaxAudioChannels", 2)
-                    .put("DeviceProfile", new JSONObject().put("Name", "TippyTV")
-                            .put("MaxStreamingBitrate", bitrate)
-                            .put("TranscodingProfiles", new JSONArray().put(hls)));
-        }
+                .put("EnableDirectPlay", false).put("EnableDirectStream", true).put("EnableTranscoding", fallback)
+                .put("AllowVideoStreamCopy", true).put("AllowAudioStreamCopy", true)
+                .put("MaxStreamingBitrate", bitrate).put("MaxAudioChannels", audioChannels)
+                .put("DeviceProfile", new JSONObject().put("Name", "TippyTV")
+                        .put("MaxStreamingBitrate", bitrate)
+                        .put("TranscodingProfiles", new JSONArray().put(hls)));
         JSONObject result = request(url("Items").addPathSegment(channel).addPathSegment("PlaybackInfo").build(), "POST", body);
         JSONArray sources = result.optJSONArray("MediaSources");
         JSONObject source = sources == null ? null : sources.optJSONObject(0);
         if (source == null) throw new NoCompatibleStream();
         String liveId = str(source, "LiveStreamId");
         String playId = str(result, "PlaySessionId");
-        JSONObject headers = source.optJSONObject("RequiredHttpHeaders");
-        String userAgent = headers == null ? null : headers.optString("User-Agent", null);
-        String container = str(source, "Container").split(",", 2)[0];
-        if (!container.matches("[a-zA-Z0-9]{1,12}")) container = "ts";
-        String transcode = str(source, "TranscodingUrl");
         try {
-            if (fallback && !transcode.isBlank()) {
-                HttpUrl endpoint = base.resolve(transcode);
-                if (endpoint == null || !sameOrigin(base, endpoint)) throw new IOException("Invalid fallback stream address.");
-                return new Stream(playbackUrl(endpoint), liveId, playId, true, userAgent);
-            }
-            if (fallback || !source.optBoolean("SupportsDirectPlay")) throw new NoCompatibleStream();
-            HttpUrl remote = source.optBoolean("IsRemote") ? HttpUrl.parse(str(source, "Path")) : null;
-            if (remote != null && !remote.host().equals("localhost") && !remote.host().equals("127.0.0.1")
-                    && !remote.host().equals("::1")) {
-                return new Stream(playbackUrl(remote), liveId, playId, false, userAgent);
-            }
-            HttpUrl endpoint = url("Videos").addPathSegment(channel).addPathSegment("stream." + container)
-                    .addQueryParameter("static", "true").addQueryParameter("mediaSourceId", str(source, "Id"))
-                    .addQueryParameter("liveStreamId", liveId).addQueryParameter("playSessionId", playId).build();
-            return new Stream(playbackUrl(endpoint), liveId, playId, false, userAgent);
+            String address = str(source, "TranscodingUrl");
+            if (address.isBlank()) throw new NoCompatibleStream();
+            HttpUrl endpoint = base.resolve(address);
+            if (endpoint == null || !sameOrigin(base, endpoint)) throw new IOException("Invalid stream address.");
+            return new Stream(playbackUrl(endpoint), liveId, playId, fallback);
         } catch (IOException invalid) {
-            close(new Stream(base, liveId, playId, fallback, userAgent));
+            close(new Stream(base, liveId, playId, fallback));
             throw invalid;
         }
     }
 
     void close(Stream stream) {
-        if (stream.converted && !stream.playId.isBlank()) {
+        if (!stream.playId.isBlank()) {
             try {
                 request(url("Videos/ActiveEncodings").addQueryParameter("deviceId", session.device)
                         .addQueryParameter("playSessionId", stream.playId).build(), "DELETE", null);
-            } catch (IOException ignored) { /* Encoder may already have stopped. */ }
+            } catch (IOException ignored) { /* Remuxer or encoder may already have stopped. */ }
         }
         if (!stream.liveId.isBlank()) {
             try {

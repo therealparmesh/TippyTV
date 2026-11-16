@@ -11,6 +11,8 @@ A standalone, Darcula-colored Android TV and Fire OS client for Jellyfin Live TV
 5. **Search** accepts names and channel numbers. **Favorites** uses Jellyfin favorites. **Jump** goes to a letter or to the first or last channel. Press Left from any channel to reach **−50** and **+50**. Press Up to return to the selected channel. Page, channel, and fast-forward or rewind buttons also skip 50 channels where supported.
 6. **Guide** shows the selected channel’s schedule. **Earlier** and **Later** step through three-hour windows. **Now** returns to current listings.
 
+Live streams use Jellyfin’s negotiated HLS endpoint instead of bypassing the server with provider URLs. The normal profile allows video/audio stream copy; Jellyfin decides whether the source needs conversion. Closing either picture stops its server remux/encoding job and live-TV lease.
+
 Playback uses **mpv only**, with an independent libmpv instance for each picture. Hardware decoding is preferred, with software decoding available when a codec cannot use the device decoder. The initial/rebuffer target is two seconds; read-ahead targets six seconds and is capped at 16 MiB per picture. There is no disk media cache. FFmpeg retries transient network and HTTP 5xx failures with bounded backoff before app-level session recovery. Swapping changes the pictures' bounds and audio volume without replacing their native rendering surfaces.
 
 After playback starts, 30 seconds without another rendered frame requests a fresh Jellyfin session. An ended or failed stream schedules a fresh session after 30 seconds. Recovery releases the old player and tuner before opening another, preserves the other picture, and stops when playback is closed or paused. **Resume live** opens a fresh session at the live edge. **Try compatible stream** asks Jellyfin for H.264/AAC HLS; conversion depends on server permissions and the source feed.
@@ -31,6 +33,6 @@ The release APK in Gradle output is unsigned. The local preview is a signed, opt
 
 ## Local QA fixture
 
-`qa/make-media.sh` generates two synthetic HLS feeds with FFmpeg. Run `python3 qa/fixture_server.py` after generating them. The fixture has 1,203 channels, a populated guide for the first two, favorites, and tuner counters at `/qa/status`. On an Android emulator, use server address `http://10.0.2.2:18798` (or set `JELLYFIN_QA_ORIGIN` and use adb reverse). Enter any nonempty fixture username. Never use a real password with the fixture.
+`qa/make-media.sh` generates two synthetic HLS feeds with FFmpeg. Run `python3 qa/fixture_server.py` after generating them. The fixture has 1,203 channels, a populated guide for the first two, favorites, and tuner counters at `/qa/status`. On an Android emulator, use server address `http://10.0.2.2:18798`. Set `JELLYFIN_QA_PORT` to use another port. Enter any nonempty fixture username. Never use a real password with the fixture.
 
 With the debug APK installed on a dedicated QA emulator and `adb` on your path, run `python3 qa/check_remote_playback.py emulator-5562` (substitute its serial). This replaces the emulator’s app session with a fixture session and checks two-stream playback, full-screen controls, remote focus, and tuner cleanup. Use `--port` when the fixture runs on another port.
