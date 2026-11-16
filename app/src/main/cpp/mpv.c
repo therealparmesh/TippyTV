@@ -144,3 +144,22 @@ JNIEXPORT void JNICALL Java_com_parmesh_livetv_MpvPlayer_destroy(JNIEnv *env, jc
     (*env)->DeleteGlobalRef(env, p->surface);
     free(p);
 }
+
+JNIEXPORT jstring JNICALL Java_com_parmesh_livetv_MpvPlayer_snapshot(JNIEnv *env, jclass type, jlong handle) {
+    Player *p = (Player *)(intptr_t)handle;
+    const char *names[] = {"time-pos", "demuxer-cache-duration", "cache-buffering-state", "avsync", "decoder-frame-drop-count", "frame-drop-count"};
+    char text[768];
+    size_t offset = 0;
+    for (size_t i = 0; i < sizeof(names)/sizeof(names[0]); i++) {
+        double value;
+        if (mpv_get_property(p->mpv, names[i], MPV_FORMAT_DOUBLE, &value) >= 0) {
+            int written = snprintf(text + offset, sizeof(text) - offset, "%s=%.3f ", names[i], value);
+            if (written < 0 || (size_t)written >= sizeof(text) - offset) { offset = sizeof(text) - 1; break; }
+            offset += (size_t)written;
+        }
+    }
+    char *decoder = mpv_get_property_string(p->mpv, "hwdec-current");
+    snprintf(text + offset, sizeof(text) - offset, "hwdec=%.32s", decoder ? decoder : "unavailable");
+    mpv_free(decoder);
+    return (*env)->NewStringUTF(env, text);
+}

@@ -34,6 +34,7 @@ final class MpvPlayer {
                 prepare(context), width, height);
     }
     int state() { return poll(handle); }
+    String diagnostics() { return snapshot(handle); }
     void pause() { setPaused(true); }
     void setPaused(boolean paused) { property(handle, "pause", paused ? "yes" : "no"); }
     void volume(int volume) { property(handle, "volume", Integer.toString(volume)); }
@@ -43,6 +44,7 @@ final class MpvPlayer {
     private static native void environment(Context context);
     private static native long create(Surface surface, String url, String agent, String ca, int width, int height);
     private static native int poll(long handle);
+    private static native String snapshot(long handle);
     private static native void property(long handle, String name, String value);
     private static native void destroy(long handle);
 }

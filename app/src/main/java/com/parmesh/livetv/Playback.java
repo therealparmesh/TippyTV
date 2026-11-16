@@ -365,6 +365,14 @@ final class Playback {
         else slot.channel = channels.get(position);
     }
 
+    void dump(java.io.PrintWriter writer) {
+        for (Slot slot : List.of(primary, secondary)) {
+            writer.println("TippyMPV " + (slot == primary ? "main" : "inset") + " status=" + status(slot)
+                    + " generation=" + slot.generation + " frames=" + view(slot).frames
+                    + (slot.player == null ? "" : " " + slot.player.diagnostics()));
+        }
+    }
+
     void destroy(Runnable afterClose) {
         stopAll();
         AtomicInteger remaining = new AtomicInteger(2);

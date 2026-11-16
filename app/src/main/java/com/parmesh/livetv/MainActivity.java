@@ -1227,6 +1227,11 @@ public final class MainActivity extends ComponentActivity {
         super.onStop();
     }
 
+    @Override public void dump(String prefix, java.io.FileDescriptor fd, java.io.PrintWriter writer, String[] args) {
+        super.dump(prefix, fd, writer, args);
+        if (player != null) player.dump(writer);
+    }
+
     @Override protected void onDestroy() {
         destroyed = true; ++catalogGeneration; ++visibleGeneration;
         ui.removeCallbacks(hideWatchControls);
