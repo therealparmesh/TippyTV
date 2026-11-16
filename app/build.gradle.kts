@@ -9,8 +9,8 @@ android {
         applicationId = "com.parmesh.livetv"
         minSdk = 23
         targetSdk = 37
-        versionCode = 12
-        versionName = "0.0.11"
+        versionCode = 13
+        versionName = "0.0.12"
     }
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
