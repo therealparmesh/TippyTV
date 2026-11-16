@@ -33,13 +33,11 @@ import androidx.activity.ComponentActivity;
 import androidx.activity.OnBackPressedCallback;
 import androidx.activity.result.ActivityResultLauncher;
 import androidx.activity.result.contract.ActivityResultContracts;
-import androidx.annotation.OptIn;
 import androidx.core.view.ViewCompat;
 import androidx.core.view.WindowCompat;
 import androidx.core.view.WindowInsetsCompat;
 import androidx.core.view.WindowInsetsControllerCompat;
-import androidx.media3.common.util.UnstableApi;
-import androidx.media3.ui.PlayerView;
+import org.videolan.libvlc.util.VLCVideoLayout;
 import androidx.recyclerview.widget.DiffUtil;
 import androidx.recyclerview.widget.LinearLayoutManager;
 import androidx.recyclerview.widget.ListAdapter;
@@ -58,7 +56,6 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.function.Consumer;
 
-@OptIn(markerClass = UnstableApi.class)
 public final class MainActivity extends ComponentActivity {
     static final int BG = 0xff252629, PANEL = 0xff303237, EDGE = 0xff45484f;
     private static final int BAR = 0xff40434a, BLUE = 0xff3d526e;
@@ -99,7 +96,8 @@ public final class MainActivity extends ComponentActivity {
     private int guideGeneration;
     private volatile long catalogGeneration;
     private FrameLayout root, video, inset;
-    private LinearLayout shell, stage, emptyState, pager;
+    private LinearLayout shell, emptyState, pager;
+    private View previewSlot;
     private HorizontalScrollView watchOverlay;
     private int revealKey = KeyEvent.KEYCODE_UNKNOWN;
     private TextView count, empty, selectedName, programText, mainMessage, insetMessage, watchTitle, watchStatus, previewLabel;
@@ -124,6 +122,7 @@ public final class MainActivity extends ComponentActivity {
                 || player.secondaryStatus().failed() || !hasWindowFocus()) return;
         video.requestFocus();
         watchOverlay.setVisibility(View.GONE);
+        layoutInset();
     };
     private final Runnable guideRefresh = this::visibleGuide;
     private final Runnable minute = new Runnable() {
@@ -420,7 +419,7 @@ public final class MainActivity extends ComponentActivity {
         queryButton.setNextFocusDownId(list.getId());
         filterButton.setNextFocusDownId(list.getId());
 
-        stage = vertical();
+        LinearLayout stage = vertical();
         LinearLayout.LayoutParams stageSize = new LinearLayout.LayoutParams(0, -1, .58f);
         stageSize.leftMargin = dp(12); body.addView(stage, stageSize);
         video = new FrameLayout(this) {
@@ -445,9 +444,13 @@ public final class MainActivity extends ComponentActivity {
             returnToSelectedChannel();
             return true;
         });
-        stage.addView(video, new LinearLayout.LayoutParams(-1, 0, 1));
-        PlayerView mainSurface = new PlayerView(this); mainSurface.setUseController(false);
-        mainSurface.setFocusable(false); mainSurface.setKeepContentOnPlayerReset(false);
+        previewSlot = new View(this);
+        stage.addView(previewSlot, new LinearLayout.LayoutParams(-1, 0, 1));
+        root.addView(video, new FrameLayout.LayoutParams(0, 0));
+        root.addOnLayoutChangeListener((v, l, t, r, b, ol, ot, or, ob) -> layoutVideo());
+        previewSlot.addOnLayoutChangeListener((v, l, t, r, b, ol, ot, or, ob) -> layoutVideo());
+        VLCVideoLayout mainSurface = new VLCVideoLayout(this);
+        mainSurface.setFocusable(false);
         video.addView(mainSurface, new FrameLayout.LayoutParams(-1, -1));
         mainMessage = text("", 18, TEXT);
         mainMessage.setGravity(Gravity.CENTER);
@@ -464,20 +467,13 @@ public final class MainActivity extends ComponentActivity {
         inset = new FrameLayout(this); inset.setBackground(box(0xff171719, ACCENT, 0));
         inset.setContentDescription(getString(R.string.muted_inset));
         inset.setPadding(dp(2), dp(2), dp(2), dp(2));
-        PlayerView insetSurface = (PlayerView) getLayoutInflater().inflate(R.layout.inset_player, inset, false);
+        VLCVideoLayout insetSurface = new VLCVideoLayout(this);
         insetSurface.setFocusable(false);
         inset.addView(insetSurface, new FrameLayout.LayoutParams(-1, -1));
         insetMessage = text("", 14, TEXT); insetMessage.setGravity(Gravity.CENTER);
         inset.addView(insetMessage, new FrameLayout.LayoutParams(-1, -1));
         video.addView(inset, new FrameLayout.LayoutParams(0, 0, Gravity.BOTTOM | Gravity.END));
-        video.addOnLayoutChangeListener((v, l, t, r, b, ol, ot, or, ob) -> {
-            if (r-l == or-ol && b-t == ob-ot) return;
-            FrameLayout.LayoutParams p = (FrameLayout.LayoutParams) inset.getLayoutParams();
-            p.width = (r-l) / 2; p.height = (b-t) / 2;
-            p.rightMargin = dp(fullscreen ? 48 : 12);
-            p.bottomMargin = dp(fullscreen ? WATCH_BAR_HEIGHT + 10 : 12);
-            inset.setLayoutParams(p);
-        });
+        video.addOnLayoutChangeListener((v, l, t, r, b, ol, ot, or, ob) -> layoutInset());
 
         selectedName = text("", 20, TEXT);
         selectedName.setTypeface(Typeface.create("sans-serif-medium", Typeface.NORMAL));
@@ -860,6 +856,7 @@ public final class MainActivity extends ComponentActivity {
         if (!fullscreen) return;
         boolean hidden = watchOverlay.getVisibility() != View.VISIBLE;
         watchOverlay.setVisibility(View.VISIBLE);
+        layoutInset();
         if (hidden || video.isFocused()) returnToChannels.requestFocus();
         scheduleWatchControls();
     }
@@ -869,27 +866,46 @@ public final class MainActivity extends ComponentActivity {
         player.stopInset();
     }
 
+    private void layoutInset() {
+        FrameLayout.LayoutParams size = (FrameLayout.LayoutParams) inset.getLayoutParams();
+        int width = video.getWidth() / 2;
+        int height = video.getHeight() / 2;
+        int margin = dp(fullscreen ? 48 : 12);
+        int bottom = dp(fullscreen ? WATCH_BAR_HEIGHT + 10 : 12);
+        if (size.width == width && size.height == height && size.rightMargin == margin && size.bottomMargin == bottom) return;
+        size.width = width; size.height = height;
+        size.rightMargin = margin; size.bottomMargin = bottom;
+        inset.setLayoutParams(size);
+    }
+
+    private void layoutVideo() {
+        // Keep both native surfaces attached while changing the video area's bounds.
+        int width = root.getWidth(), height = root.getHeight(), left = 0, top = 0;
+        if (!fullscreen) {
+            int[] anchor = new int[2], origin = new int[2];
+            previewSlot.getLocationInWindow(anchor);
+            root.getLocationInWindow(origin);
+            left = anchor[0] - origin[0]; top = anchor[1] - origin[1];
+            width = previewSlot.getWidth(); height = previewSlot.getHeight();
+        }
+        FrameLayout.LayoutParams size = (FrameLayout.LayoutParams) video.getLayoutParams();
+        if (size.width == width && size.height == height && size.leftMargin == left && size.topMargin == top) return;
+        size.width = width; size.height = height; size.leftMargin = left; size.topMargin = top;
+        video.setLayoutParams(size);
+    }
+
     private void setFullscreen(boolean enabled) {
         if (fullscreen == enabled || video == null) return;
         fullscreen = enabled;
         video.setForeground(null);
         revealKey = KeyEvent.KEYCODE_UNKNOWN;
         ui.removeCallbacks(hideWatchControls);
-        ViewGroup previous = (ViewGroup) video.getParent();
-        if (enabled) {
-            previous.removeView(video); shell.setVisibility(View.GONE);
-            root.addView(video, new FrameLayout.LayoutParams(-1, -1));
-            watchOverlay.setVisibility(View.GONE);
-            video.requestFocus();
-        } else {
-            root.removeView(video);
-            stage.addView(video, 0, new LinearLayout.LayoutParams(-1, 0, 1));
-            shell.setVisibility(View.VISIBLE); watchOverlay.setVisibility(View.GONE);
-            returnToSelectedChannel();
-        }
-        FrameLayout.LayoutParams p = (FrameLayout.LayoutParams) inset.getLayoutParams();
-        p.rightMargin = dp(fullscreen ? 48 : 12);
-        p.bottomMargin = dp(fullscreen ? WATCH_BAR_HEIGHT + 10 : 12); inset.setLayoutParams(p);
+        shell.setVisibility(enabled ? View.INVISIBLE : View.VISIBLE);
+        watchOverlay.setVisibility(View.GONE);
+        layoutVideo();
+        if (enabled) video.requestFocus();
+        else returnToSelectedChannel();
+        layoutInset();
         mainMessage.setPadding(dp(fullscreen ? 48 : 22), dp(fullscreen ? 27 : 12),
                 dp(fullscreen ? 48 : 22), dp(fullscreen ? 27 : 12));
         updatePlayback();

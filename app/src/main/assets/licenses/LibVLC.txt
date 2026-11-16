@@ -1,0 +1,17 @@
+LibVLC Android 3.7.7 — VideoLAN and contributors
+License: GNU Lesser General Public License, version 2.1 (see LibVLC-LGPL-2.1.txt).
+
+Upstream Android library and binding sources:
+https://repo.maven.apache.org/maven2/org/videolan/android/libvlc-all/3.7.7/
+Native VLC base source (plus the upstream Android binding patches):
+https://code.videolan.org/videolan/vlc/-/tree/84177b2273abc5c4300234e6e18b55a4d2dd5a03
+Android bindings and native build instructions:
+https://code.videolan.org/videolan/libvlcjni/-/tree/0b8dc65efb203c86a0476bc337ddd99ecf1c0ef6
+
+LibVLC is dynamically linked. TippyTV's source and Gradle build permit rebuilding
+with a modified LibVLC AAR. The build recipe and HLS playlist-duration fix are:
+https://github.com/therealparmesh/TippyTV/blob/main/tools/build-libvlc.sh
+https://github.com/therealparmesh/TippyTV/blob/main/third_party/libvlc/hls-duration.patch
+The modification supplies the target segment duration when updating a live HLS
+playlist, allowing the library to account for skipped segments without an assertion.
+Run tools/build-libvlc.sh to rebuild; the app links build/libvlc/libvlc-patched.aar.

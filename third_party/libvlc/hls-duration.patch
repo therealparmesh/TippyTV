@@ -1,0 +1,12 @@
+diff --git a/modules/demux/hls/playlist/Parser.cpp b/modules/demux/hls/playlist/Parser.cpp
+index f9d96b2679..c93ab64d76 100644
+--- a/modules/demux/hls/playlist/Parser.cpp
++++ b/modules/demux/hls/playlist/Parser.cpp
+@@ -380,6 +380,7 @@ void M3U8Parser::parseSegments(vlc_object_t *, HLSRepresentation *rep, const std
+ 
+             case SingleValueTag::EXTXTARGETDURATION:
+                 rep->targetDuration = static_cast<const SingleValueTag *>(tag)->getValue().decimal();
++                segmentList->addAttribute(new DurationAttr(timescale.ToScaled(CLOCK_FREQ * rep->targetDuration)));
+                 break;
+ 
+             case SingleValueTag::EXTXPLAYLISTTYPE:

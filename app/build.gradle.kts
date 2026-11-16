@@ -30,10 +30,10 @@ android {
 dependencies {
     implementation("androidx.activity:activity:1.13.0")
     implementation("androidx.recyclerview:recyclerview:1.4.0")
-    implementation("androidx.media3:media3-exoplayer:1.11.1")
-    implementation("androidx.media3:media3-exoplayer-hls:1.11.1")
-    implementation("androidx.media3:media3-ui:1.11.1")
-    implementation("androidx.media3:media3-datasource-okhttp:1.11.1")
+    val libVlc = rootProject.file("build/libvlc/libvlc-patched.aar")
+    check(libVlc.isFile) { "Run ./tools/build-libvlc.sh to build the patched playback engine first." }
+    implementation(files(libVlc))
+    implementation("androidx.media:media:1.8.0")
     implementation("com.squareup.okhttp3:okhttp:5.5.1")
     coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.1.5")
     testImplementation("junit:junit:4.13.2")

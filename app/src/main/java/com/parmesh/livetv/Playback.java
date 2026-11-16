@@ -4,42 +4,39 @@ import android.content.Context;
 import android.os.Handler;
 import android.os.Looper;
 import android.os.SystemClock;
-import androidx.annotation.OptIn;
-import androidx.media3.common.AudioAttributes;
-import androidx.media3.common.C;
-import androidx.media3.common.MediaItem;
-import androidx.media3.common.MimeTypes;
-import androidx.media3.common.PlaybackException;
-import androidx.media3.common.Player;
-import androidx.media3.common.util.UnstableApi;
-import androidx.media3.datasource.okhttp.OkHttpDataSource;
-import androidx.media3.exoplayer.DefaultLoadControl;
-import androidx.media3.exoplayer.DefaultRenderersFactory;
-import androidx.media3.exoplayer.ExoPlayer;
-import androidx.media3.exoplayer.source.DefaultMediaSourceFactory;
-import androidx.media3.ui.PlayerView;
+import android.media.AudioManager;
+import android.net.Uri;
+import androidx.media.AudioAttributesCompat;
+import androidx.media.AudioFocusRequestCompat;
+import androidx.media.AudioManagerCompat;
+import org.videolan.libvlc.LibVLC;
+import org.videolan.libvlc.Media;
+import org.videolan.libvlc.MediaPlayer;
+import org.videolan.libvlc.util.VLCVideoLayout;
 import java.util.List;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.atomic.AtomicInteger;
 
-@OptIn(markerClass = UnstableApi.class)
 final class Playback {
     enum Status {
         IDLE(0), TUNING(R.string.tuning), COMPATIBLE(R.string.trying_compatible), BUFFERING(R.string.buffering),
         LIVE(R.string.live), LIVE_COMPATIBLE(R.string.live_compatible), PAUSED(R.string.paused),
-        TUNE_FAILED(R.string.tune_failed), STREAM_FAILED(R.string.stream_failed), INSET_FAILED(R.string.inset_failed);
+        TUNE_FAILED(R.string.tune_failed), STREAM_FAILED(R.string.stream_failed);
 
         final int label;
         Status(int label) { this.label = label; }
         boolean live() { return this == LIVE || this == LIVE_COMPATIBLE; }
-        boolean failed() { return this == TUNE_FAILED || this == STREAM_FAILED || this == INSET_FAILED; }
+        boolean failed() { return this == TUNE_FAILED || this == STREAM_FAILED; }
     }
 
     private final Handler ui = new Handler(Looper.getMainLooper());
-    private final Context context;
-    private final PlayerView mainView;
-    private final PlayerView insetView;
+    private final LibVLC engine;
+    private final AudioManager audio;
+    private final AudioFocusRequestCompat audioFocus;
+    private boolean resumeOnFocusGain;
+    private final VLCVideoLayout mainView;
+    private final VLCVideoLayout insetView;
     private final Runnable changed;
     private Slot primary = new Slot();
     private Slot secondary = new Slot();
@@ -49,25 +46,51 @@ final class Playback {
         volatile long generation;
         Jellyfin api;
         Jellyfin.Stream stream;
-        ExoPlayer player;
+        MediaPlayer player;
+        Media media;
         Channels.Channel channel;
         Status status = Status.IDLE;
         boolean fallback;
         boolean playWhenReady = true;
-        int liveWindowRetries;
         boolean reconnectPending;
         Runnable progressCheck;
-        final Runnable stablePlayback = () -> liveWindowRetries = 0;
         final Runnable reconnect = () -> request(this, api, channel, fallback, true);
 
         boolean active() { return channel != null && !status.failed(); }
     }
 
-    Playback(Context context, PlayerView mainView, PlayerView insetView, Runnable changed) {
-        this.context = context;
+    Playback(Context context, VLCVideoLayout mainView, VLCVideoLayout insetView, Runnable changed) {
+        engine = new LibVLC(context.getApplicationContext(), new java.util.ArrayList<>(List.of("--no-video-title-show")));
+        engine.setUserAgent("TippyTV", "TippyTV/" + BuildConfig.VERSION_NAME);
+        audio = (AudioManager) context.getSystemService(Context.AUDIO_SERVICE);
+        audioFocus = new AudioFocusRequestCompat.Builder(AudioManagerCompat.AUDIOFOCUS_GAIN)
+                .setAudioAttributes(new AudioAttributesCompat.Builder()
+                        .setUsage(AudioAttributesCompat.USAGE_MEDIA)
+                        .setContentType(AudioAttributesCompat.CONTENT_TYPE_MOVIE).build())
+                .setOnAudioFocusChangeListener(this::audioFocusChanged).build();
         this.mainView = mainView;
         this.insetView = insetView;
         this.changed = changed;
+    }
+
+    private void audioFocusChanged(int change) {
+        if (change == AudioManager.AUDIOFOCUS_GAIN) {
+            if (resumeOnFocusGain) setPlaying(true);
+            configure(primary);
+        } else if (change == AudioManager.AUDIOFOCUS_LOSS_TRANSIENT || change == AudioManager.AUDIOFOCUS_LOSS) {
+            resumeOnFocusGain = change == AudioManager.AUDIOFOCUS_LOSS_TRANSIENT && primary.playWhenReady;
+            primary.playWhenReady = false;
+            if (primary.player != null && primary.player.isPlaying()) primary.player.pause();
+            updateRecovery(primary);
+            if (change == AudioManager.AUDIOFOCUS_LOSS) AudioManagerCompat.abandonAudioFocusRequest(audio, audioFocus);
+            changed.run();
+        } else if (change == AudioManager.AUDIOFOCUS_LOSS_TRANSIENT_CAN_DUCK && primary.player != null) {
+            primary.player.setVolume(20);
+        }
+    }
+
+    private boolean requestAudioFocus() {
+        return AudioManagerCompat.requestAudioFocus(audio, audioFocus) == AudioManager.AUDIOFOCUS_REQUEST_GRANTED;
     }
 
     Channels.Channel primary() { return primary.channel; }
@@ -75,7 +98,7 @@ final class Playback {
     Status primaryStatus() { return status(primary); }
     Status secondaryStatus() { return status(secondary); }
     private Status status(Slot slot) {
-        boolean paused = slot.player == null ? !slot.playWhenReady : !slot.player.getPlayWhenReady();
+        boolean paused = !slot.playWhenReady;
         return slot.channel != null && !slot.status.failed() && paused ? Status.PAUSED : slot.status;
     }
 
@@ -83,18 +106,22 @@ final class Playback {
 
     void setPlaying(boolean playing) {
         if (!canPause()) return;
+        resumeOnFocusGain = false;
+        if (playing && !requestAudioFocus()) return;
+        boolean wasPlaying = primary.playWhenReady;
         primary.playWhenReady = playing;
-        if (primary.player == null) {
+        if (playing && !wasPlaying && primary.player != null) {
+            // Reopen at the live edge rather than replaying data buffered before pause.
+            request(primary, primary.api, primary.channel, primary.fallback);
+        } else {
+            if (!playing && primary.player != null && primary.player.isPlaying()) primary.player.pause();
             updateRecovery(primary);
             changed.run();
-        } else {
-            if (playing && !primary.player.getPlayWhenReady()) primary.player.seekToDefaultPosition();
-            primary.player.setPlayWhenReady(playing);
         }
+        if (!playing) AudioManagerCompat.abandonAudioFocusRequest(audio, audioFocus);
     }
     boolean hasVideo() {
-        return (primary.player != null && primary.player.isPlaying())
-                || (secondary.player != null && secondary.player.isPlaying());
+        return (primary.active() && primary.playWhenReady) || (secondary.active() && secondary.playWhenReady);
     }
 
     void tune(Jellyfin api, Channels.Channel channel, boolean inset) {
@@ -116,12 +143,14 @@ final class Playback {
             stop(other);
         }
         if (target.active() && target.channel.id().equals(channel.id())) return;
+        if (!inset) resumeOnFocusGain = false;
         target.playWhenReady = !paused;
         request(target, api, channel, false);
     }
 
     void tuneCompatible(Jellyfin api, Channels.Channel channel) {
         if (secondary.channel != null && secondary.channel.id().equals(channel.id())) stop(secondary);
+        resumeOnFocusGain = false;
         primary.playWhenReady = true;
         request(primary, api, channel, true);
     }
@@ -137,7 +166,6 @@ final class Playback {
         slot.api = api;
         slot.channel = channel;
         slot.fallback = fallback;
-        slot.liveWindowRetries = 0;
         slot.status = fallback ? Status.COMPATIBLE : Status.TUNING;
         changed.run();
         boolean small = slot == secondary;
@@ -176,7 +204,7 @@ final class Playback {
                 try {
                     start(slot, opened, generation);
                 } catch (RuntimeException error) {
-                    failed(slot, generation);
+                    finishWithError(slot, Status.STREAM_FAILED);
                 }
             });
         });
@@ -184,22 +212,57 @@ final class Playback {
 
     private void start(Slot slot, Jellyfin.Stream stream, long generation) {
         slot.stream = stream;
-        var dataSource = new OkHttpDataSource.Factory(slot.api.streamClient()).setUserAgent(stream.userAgent());
-        var renderers = new DefaultRenderersFactory(context).setEnableDecoderFallback(true);
-        var load = new DefaultLoadControl.Builder()
-                .setBufferDurationsMs(6_000, 16_000, 2_000, 3_000).build();
-        ExoPlayer player = new ExoPlayer.Builder(context, renderers)
-                .setMediaSourceFactory(new DefaultMediaSourceFactory(dataSource))
-                .setLoadControl(load).build();
+        Media media = new Media(engine, Uri.parse(stream.url().toString()));
+        slot.media = media;
+        media.addOption(":network-caching=2000");
+        media.addOption(":adaptive-livedelay=6000");
+        media.addOption(":adaptive-maxbuffer=6000");
+        media.addOption(":http-reconnect");
+        if (stream.userAgent() != null) media.addOption(":http-user-agent=" + stream.userAgent());
+        media.setHWDecoderEnabled(true, false);
+        if (slot == primary && slot.playWhenReady && !requestAudioFocus()) slot.playWhenReady = false;
+        if (!slot.playWhenReady) media.addOption(":start-paused");
+        MediaPlayer player = new MediaPlayer(engine);
         slot.player = player;
+        player.attachViews(view(slot), null, false, true);
+        player.setAudioOutputDevice("stereo");
+        configure(slot);
+        player.setEventListener(event -> {
+            if (slot.generation != generation) return;
+            Status previous = slot.status;
+            switch (event.type) {
+                case MediaPlayer.Event.Opening:
+                    slot.status = Status.BUFFERING;
+                    break;
+                case MediaPlayer.Event.Buffering:
+                    slot.status = event.getBuffering() < 100 ? Status.BUFFERING
+                            : stream.converted() ? Status.LIVE_COMPATIBLE : Status.LIVE;
+                    break;
+                case MediaPlayer.Event.Playing:
+                    if (!slot.playWhenReady) { player.pause(); return; }
+                    slot.reconnectPending = false;
+                    updateRecovery(slot);
+                    slot.status = stream.converted() ? Status.LIVE_COMPATIBLE : Status.LIVE;
+                    break;
+                case MediaPlayer.Event.EndReached:
+                case MediaPlayer.Event.EncounteredError:
+                    reconnectLater(slot);
+                    return;
+                case MediaPlayer.Event.Paused:
+                    break;
+                default:
+                    return;
+            }
+            if (slot.status != previous || event.type == MediaPlayer.Event.Paused) changed.run();
+        });
         FrameProgress progress = new FrameProgress();
-        player.setVideoFrameMetadataListener((presentationTimeUs, releaseTimeNs, format, mediaFormat) ->
-                progress.frame(presentationTimeUs, SystemClock.elapsedRealtime()));
         slot.progressCheck = new Runnable() {
             @Override public void run() {
                 if (slot.generation != generation) return;
-                if (progress.stalled(SystemClock.elapsedRealtime(), !slot.playWhenReady
-                        || player.getPlaybackSuppressionReason() != Player.PLAYBACK_SUPPRESSION_REASON_NONE)) {
+                long now = SystemClock.elapsedRealtime();
+                var stats = media.getStats();
+                if (stats != null && stats.displayedPictures > 0) progress.frame(stats.displayedPictures, now);
+                if (progress.stalled(now, !slot.playWhenReady)) {
                     request(slot, slot.api, slot.channel, slot.fallback, true);
                     return;
                 }
@@ -207,65 +270,12 @@ final class Playback {
             }
         };
         ui.postDelayed(slot.progressCheck, 5_000);
-        configure(slot);
-        view(slot).setPlayer(player);
-        player.addListener(new Player.Listener() {
-            @Override public void onPlaybackStateChanged(int state) {
-                if (slot.generation != generation) return;
-                if (state == Player.STATE_ENDED) {
-                    reconnectLater(slot);
-                } else {
-                    slot.status = state == Player.STATE_READY ? (stream.converted() ? Status.LIVE_COMPATIBLE : Status.LIVE)
-                            : state == Player.STATE_BUFFERING ? Status.BUFFERING : slot.status;
-                    if (state == Player.STATE_READY) slot.reconnectPending = false;
-                    updateRecovery(slot);
-                    changed.run();
-                }
-            }
-
-            @Override public void onPlayWhenReadyChanged(boolean playing, int reason) {
-                if (slot.generation != generation) return;
-                slot.playWhenReady = playing;
-                updateRecovery(slot);
-                changed.run();
-            }
-
-            @Override public void onIsPlayingChanged(boolean playing) {
-                if (slot.generation != generation) return;
-                ui.removeCallbacks(slot.stablePlayback);
-                if (playing) ui.postDelayed(slot.stablePlayback, 10_000);
-                changed.run();
-            }
-
-            @Override public void onPlayerError(PlaybackException error) {
-                if (slot.generation != generation) return;
-                // A stale live position is recoverable without opening a converted stream.
-                if (error.errorCode == PlaybackException.ERROR_CODE_BEHIND_LIVE_WINDOW && slot.liveWindowRetries++ < 2) {
-                    player.seekToDefaultPosition();
-                    player.prepare();
-                } else if (error.errorCode == PlaybackException.ERROR_CODE_IO_NETWORK_CONNECTION_FAILED
-                        || error.errorCode == PlaybackException.ERROR_CODE_IO_NETWORK_CONNECTION_TIMEOUT
-                        || error.errorCode == PlaybackException.ERROR_CODE_IO_BAD_HTTP_STATUS
-                        || error.errorCode == PlaybackException.ERROR_CODE_IO_UNSPECIFIED
-                        || error.errorCode == PlaybackException.ERROR_CODE_BEHIND_LIVE_WINDOW) {
-                    reconnectLater(slot);
-                } else if (slot == secondary && error.errorCode == PlaybackException.ERROR_CODE_DECODER_INIT_FAILED) {
-                    // Decoder exhaustion on the second player shouldn't interrupt the first.
-                    finishWithError(slot, Status.INSET_FAILED);
-                } else {
-                    failed(slot, generation);
-                }
-            }
-        });
-        MediaItem.Builder item = new MediaItem.Builder().setUri(stream.url().toString());
-        if (stream.hls()) item.setMimeType(MimeTypes.APPLICATION_M3U8);
-        player.setMediaItem(item.build());
-        player.setPlayWhenReady(slot.playWhenReady);
-        player.prepare();
-
+        player.setMedia(media);
+        player.play();
     }
 
     private void reconnectLater(Slot slot) {
+        if (slot.reconnectPending) return;
         slot.reconnectPending = true;
         slot.status = Status.BUFFERING;
         updateRecovery(slot);
@@ -274,17 +284,10 @@ final class Playback {
 
     private void updateRecovery(Slot slot) {
         ui.removeCallbacks(slot.reconnect);
-        // Let Media3 finish loading; buffering alone is not a failed stream.
-        // Reopen only after a terminal network error or end-of-stream.
+        // Buffering alone is not a failure. Reopen after an error or end-of-stream.
         if (slot.reconnectPending && slot.playWhenReady) {
             ui.postDelayed(slot.reconnect, 30_000);
         }
-    }
-
-    private void failed(Slot slot, long generation) {
-        if (slot.generation != generation) return;
-        if (!slot.fallback) request(slot, slot.api, slot.channel, true);
-        else finishWithError(slot, Status.STREAM_FAILED);
     }
 
     private void finishWithError(Slot slot, Status status) {
@@ -296,41 +299,57 @@ final class Playback {
         changed.run();
     }
 
-    private PlayerView view(Slot slot) { return slot == primary ? mainView : insetView; }
+    private VLCVideoLayout view(Slot slot) { return slot == primary ? mainView : insetView; }
 
     private void configure(Slot slot) {
-        if (slot.player == null) return;
-        boolean muted = slot == secondary;
-        slot.player.setVolume(muted ? 0f : 1f);
-        slot.player.setAudioAttributes(AudioAttributes.DEFAULT, !muted);
-        slot.player.setTrackSelectionParameters(slot.player.getTrackSelectionParameters().buildUpon()
-                .setTrackTypeDisabled(C.TRACK_TYPE_AUDIO, muted).build());
+        if (slot.player != null) slot.player.setVolume(slot == secondary ? 0 : 100);
     }
 
     void swap() {
         if (secondary.channel == null) return;
-        mainView.setPlayer(null);
-        insetView.setPlayer(null);
+        if (primary.player != null) primary.player.detachViews();
+        if (secondary.player != null) secondary.player.detachViews();
+        resumeOnFocusGain = false;
         Slot old = primary;
         primary = secondary;
         secondary = old;
         configure(secondary);
         configure(primary);
-        mainView.setPlayer(primary.player);
-        insetView.setPlayer(secondary.player);
+        if (primary.player != null) primary.player.attachViews(mainView, null, false, true);
+        if (secondary.player != null) secondary.player.attachViews(insetView, null, false, true);
+        if (primary.active() && primary.playWhenReady) {
+            if (!requestAudioFocus()) setPlaying(false);
+        } else {
+            AudioManagerCompat.abandonAudioFocusRequest(audio, audioFocus);
+        }
         changed.run();
     }
 
     private Jellyfin.Stream detach(Slot slot) {
         ui.removeCallbacks(slot.reconnect);
         slot.reconnectPending = false;
-        ui.removeCallbacks(slot.stablePlayback);
         if (slot.progressCheck != null) ui.removeCallbacks(slot.progressCheck);
         slot.progressCheck = null;
-        ExoPlayer oldPlayer = slot.player;
+        MediaPlayer oldPlayer = slot.player;
+        Media oldMedia = slot.media;
         slot.player = null;
-        view(slot).setPlayer(null);
-        if (oldPlayer != null) oldPlayer.release();
+        slot.media = null;
+        if (oldPlayer != null) {
+            oldPlayer.setEventListener(null);
+            oldPlayer.setVolume(0);
+            oldPlayer.detachViews();
+        }
+        // Native stop can wait for network/decoder teardown. Keep it off the UI
+        // thread, and finish it before this slot opens its next tuner.
+        if (oldPlayer != null || oldMedia != null) slot.tuner.execute(() -> {
+            try {
+                if (oldPlayer != null) {
+                    try { oldPlayer.stop(); } finally { oldPlayer.release(); }
+                }
+            } finally {
+                if (oldMedia != null) oldMedia.release();
+            }
+        });
         Jellyfin.Stream old = slot.stream;
         slot.stream = null;
         return old;
@@ -346,7 +365,12 @@ final class Playback {
     }
 
     void stopInset() { stop(secondary); changed.run(); }
-    void stopAll() { stop(primary); stop(secondary); changed.run(); }
+    void stopAll() {
+        stop(primary); stop(secondary);
+        resumeOnFocusGain = false;
+        AudioManagerCompat.abandonAudioFocusRequest(audio, audioFocus);
+        changed.run();
+    }
 
     void reconcileChannels(List<Channels.Channel> channels) {
         if (primary.channel == null && secondary.channel == null) return;
@@ -367,7 +391,10 @@ final class Playback {
         stopAll();
         AtomicInteger remaining = new AtomicInteger(2);
         Runnable closed = () -> {
-            if (remaining.decrementAndGet() == 0 && afterClose != null) afterClose.run();
+            if (remaining.decrementAndGet() == 0) {
+                engine.release();
+                if (afterClose != null) afterClose.run();
+            }
         };
         closeTuner(primary, closed);
         closeTuner(secondary, closed);

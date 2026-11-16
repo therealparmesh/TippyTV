@@ -5,6 +5,8 @@ Requires the debug APK installed and fixture_server.py running. Never targets a 
 import argparse
 import json
 import subprocess
+import struct
+import re
 import time
 import urllib.request
 import xml.etree.ElementTree as ET
@@ -63,6 +65,27 @@ def streams(expected):
         time.sleep(.5)
     raise AssertionError(state)
 
+
+
+def pictures_visible():
+    # Assert pixels, not just the player's "Live" status: detached native surfaces
+    # can keep decoding while rendering an entirely black picture.
+    raw = adb('exec-out', 'screencap')
+    width, height, pixel_format = struct.unpack_from('<III', raw)
+    assert pixel_format == 1, ('Unexpected screenshot pixel format', pixel_format)
+    pixels = memoryview(raw)[len(raw) - width * height * 4:]
+    tree = nodes()
+    inset = next(n for n in tree if n.get('content-desc') == 'Muted inset')
+    left, top, right, bottom = map(int, re.findall(r'\d+', inset.get('bounds')))
+    region = ((left + 8) / width, (top + 8) / height, (right - 8) / width, (bottom - 8) / height)
+    for name, region in (('main', (.1, .1, .45, .4)), ('inset', region)):
+        left, top, right, bottom = region
+        colorful = 0
+        for y in range(int(height * top), int(height * bottom), 8):
+            for x in range(int(width * left), int(width * right), 8):
+                rgb = pixels[(y * width + x) * 4:(y * width + x) * 4 + 3]
+                colorful += max(rgb) > 180 and max(rgb) - min(rgb) > 120
+        assert colorful > 30, (name, 'picture is black or missing', colorful)
 
 
 def controls_hidden():
@@ -187,22 +210,7 @@ key(22)
 focused('Full screen')
 key(23)
 controls_hidden()
-pid = adb('shell', 'pidof', 'com.parmesh.livetv').decode().strip()
-def live_window_errors():
-    return adb('logcat', '-d', '--pid=' + pid, '-s', 'ExoPlayerImplInternal:E').count(b'BehindLiveWindowException')
-before_errors = live_window_errors()
-before_opened = request('/qa/status')['opened']
-request('/qa/advance_live_window', {})
-for _ in range(15):
-    time.sleep(2)
-    if live_window_errors() > before_errors:
-        break
-else:
-    raise AssertionError('Fixture did not exercise live-window recovery')
-controls_hidden()
-assert request('/qa/status')['opened'] == before_opened, 'Live-window recovery opened a new server stream'
-print('PASS: stale live window recovers without a new server stream', flush=True)
-
+pictures_visible()
 def both_live():
     key(19)
     tree = nodes()
@@ -210,6 +218,13 @@ def both_live():
             and not any('Buffering' in node.get('text', '') or 'Tuning' in node.get('text', '')
                         for node in tree))
 
+
+before_opened = request('/qa/status')['opened']
+request('/qa/advance_live_window', {})
+time.sleep(20)
+assert both_live(), 'Playback did not recover from an expired live window'
+assert request('/qa/status')['opened'] == before_opened, 'Live-window recovery opened a new server stream'
+print('PASS: stale live window recovers without a new server stream', flush=True)
 
 request('/qa/media_failure?status=503', {})
 time.sleep(3)
@@ -224,7 +239,6 @@ print('PASS: brief media outage resumes on existing streams', flush=True)
 # Only the old lease fails: recovery must obtain a fresh URL while the inset plays.
 for mode in ('503', '403', 'ended', 'empty'):
     baseline = request('/qa/status')
-    errors_before = adb('logcat', '-d', '--pid=' + pid, '-s', 'ExoPlayerImplInternal:E').count(b'Playback error')
     request('/qa/interrupt?channel=a&mode=' + mode, {})
     deadline = time.monotonic() + 90
     while time.monotonic() < deadline:
@@ -232,8 +246,6 @@ for mode in ('503', '403', 'ended', 'empty'):
         if state['opened'] > baseline['opened'] and both_live():break
         time.sleep(2)
     else:raise AssertionError(('No fresh-session recovery', mode, state))
-    if mode == 'empty':
-        assert adb('logcat', '-d', '--pid=' + pid, '-s', 'ExoPlayerImplInternal:E').count(b'Playback error') == errors_before, 'Empty-media case depended on a player error'
     assert state['opened'] == baseline['opened'] + 1, ('Other stream reopened', mode, state)
     assert state['closed'] == baseline['closed'] + 1, ('Old lease leaked', mode, state)
     assert state['converted_requests'] == baseline['converted_requests'], 'Network recovery requested transcoding'
@@ -275,7 +287,14 @@ key(23)
 key(22)
 key(23)  # Swap without leaving fullscreen or opening another tuner.
 streams(2)
+controls_hidden()
+pictures_visible()
+key(19)
+focused('Channels')
 key(22)
+key(22)
+key(22)
+focused('Close inset')
 key(23)  # Close inset; focus must move to a surviving control.
 focused('Channels')
 streams(1)

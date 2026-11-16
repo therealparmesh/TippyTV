@@ -29,7 +29,7 @@ public class FrameProgressTest {
         assertFalse(progress.stalled(90_000, true));
         assertFalse(progress.stalled(95_000, false));
         assertTrue(progress.stalled(120_000, false));
-        progress.frame(0, 120_001); // A new timestamp epoch is valid progress.
+        progress.frame(0, 120_001); // A reset frame counter is valid progress.
         assertFalse(progress.stalled(120_002, false));
     }
 }

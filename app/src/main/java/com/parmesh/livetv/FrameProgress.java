@@ -2,12 +2,12 @@ package com.parmesh.livetv;
 
 /** Detects stalled video only after the first frame; player state changes are not progress. */
 final class FrameProgress {
-    private volatile long lastFrameAt = -1;
-    private long lastPresentationTime = Long.MIN_VALUE;
+    private long lastFrameAt = -1;
+    private long lastFrameCount = Long.MIN_VALUE;
 
-    void frame(long presentationTimeUs, long now) {
-        if (presentationTimeUs != lastPresentationTime) {
-            lastPresentationTime = presentationTimeUs;
+    void frame(long frameCount, long now) {
+        if (frameCount != lastFrameCount) {
+            lastFrameCount = frameCount;
             lastFrameAt = now;
         }
     }

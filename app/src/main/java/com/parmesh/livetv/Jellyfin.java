@@ -27,7 +27,7 @@ final class Jellyfin {
 
     record Session(String server, String token, String user, String device) {}
     record Page(List<Channels.Channel> channels, int consumed, int total) {}
-    record Stream(HttpUrl url, boolean hls, String liveId, String playId, boolean converted, String userAgent) {}
+    record Stream(HttpUrl url, String liveId, String playId, boolean converted, String userAgent) {}
     record QuickConnect(String code, String secret) {}
 
     static final class HttpFailure extends IOException {
@@ -75,15 +75,16 @@ final class Jellyfin {
         return a.scheme().equals(b.scheme()) && a.host().equals(b.host()) && a.port() == b.port();
     }
 
-    OkHttpClient streamClient() {
-        return HTTP.newBuilder().callTimeout(0, TimeUnit.SECONDS)
-                .followRedirects(true).followSslRedirects(true)
-                .addNetworkInterceptor(chain -> {
-                    Request request = chain.request();
-                    Request.Builder clean = request.newBuilder().removeHeader("Authorization").removeHeader("X-Emby-Token");
-                    if (sameOrigin(base, request.url())) clean.header("Authorization", authorization());
-                    return chain.proceed(clean.build());
-                }).build();
+    HttpUrl playbackUrl(HttpUrl endpoint) throws IOException {
+        if (sameOrigin(base, endpoint)) {
+            endpoint = endpoint.newBuilder().setQueryParameter("api_key", session.token).build();
+        }
+        // LibVLC uses platform DNS. Resolve HTTP .local hosts through our mDNS
+        // resolver; keep HTTPS hostnames intact for certificate verification.
+        if (endpoint.scheme().equals("http") && endpoint.host().endsWith(".local")) {
+            endpoint = endpoint.newBuilder().host(new LocalDns().lookup(endpoint.host()).get(0).getHostAddress()).build();
+        }
+        return endpoint;
     }
 
     private JSONObject request(HttpUrl endpoint, String method, JSONObject body) throws IOException {
@@ -234,26 +235,22 @@ final class Jellyfin {
             if (fallback && !transcode.isBlank()) {
                 HttpUrl endpoint = base.resolve(transcode);
                 if (endpoint == null || !sameOrigin(base, endpoint)) throw new IOException("Invalid fallback stream address.");
-                return new Stream(endpoint, endpoint.encodedPath().endsWith(".m3u8"), liveId, playId, true, userAgent);
+                return new Stream(playbackUrl(endpoint), liveId, playId, true, userAgent);
             }
             if (fallback || !source.optBoolean("SupportsDirectPlay")) throw new NoCompatibleStream();
             HttpUrl remote = source.optBoolean("IsRemote") ? HttpUrl.parse(str(source, "Path")) : null;
             if (remote != null && !remote.host().equals("localhost") && !remote.host().equals("127.0.0.1")
                     && !remote.host().equals("::1")) {
-                return new Stream(remote, isHls(container, remote), liveId, playId, false, userAgent);
+                return new Stream(playbackUrl(remote), liveId, playId, false, userAgent);
             }
             HttpUrl endpoint = url("Videos").addPathSegment(channel).addPathSegment("stream." + container)
                     .addQueryParameter("static", "true").addQueryParameter("mediaSourceId", str(source, "Id"))
                     .addQueryParameter("liveStreamId", liveId).addQueryParameter("playSessionId", playId).build();
-            return new Stream(endpoint, isHls(container, endpoint), liveId, playId, false, userAgent);
+            return new Stream(playbackUrl(endpoint), liveId, playId, false, userAgent);
         } catch (IOException invalid) {
-            close(new Stream(base, false, liveId, playId, fallback, userAgent));
+            close(new Stream(base, liveId, playId, fallback, userAgent));
             throw invalid;
         }
-    }
-
-    private static boolean isHls(String container, HttpUrl url) {
-        return container.equalsIgnoreCase("hls") || url.encodedPath().toLowerCase(java.util.Locale.ROOT).endsWith(".m3u8");
     }
 
     void close(Stream stream) {
