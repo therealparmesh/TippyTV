@@ -88,6 +88,9 @@
     <string name="buffering">Buffering video…</string>
     <string name="waiting_reconnect">Stream interrupted. Waiting to retry…</string>
     <string name="reconnecting">Reconnecting to Jellyfin…</string>
+    <string name="loading_elapsed">%1$s\n%2$d s elapsed</string>
+    <string name="buffering_detail">Buffering video…\n%1$.1f s buffered · %2$d s elapsed</string>
+    <string name="retry_countdown">Stream interrupted.\nRetrying in %1$.1f s</string>
     <string name="pause">Pause</string>
     <string name="paused_channel">Paused · %1$s</string>
     <string name="paused">Paused</string>

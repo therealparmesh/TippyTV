@@ -202,7 +202,8 @@ request('/qa/slow_start?enabled=0', {})
 print('PASS: slow startup finishes on the original session through Jellyfin HLS', flush=True)
 request('/qa/open_delay?ms=8000', {})
 key(23)
-assert any('Requesting stream from Jellyfin' in n.get('text', '') for n in nodes()), 'Pending stream request has no detailed status'
+pending = nodes()
+assert any('Requesting stream from Jellyfin' in n.get('text', '') and re.search(r'\d+ s elapsed', n.get('text', '')) for n in pending), 'Pending stream request has no elapsed status'
 assert request('/qa/status')['open'] == 0, 'Fixture did not delay the tune response'
 key(127)  # Pause while PlaybackInfo is still pending, before a player exists.
 streams(1)

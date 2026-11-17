@@ -54,6 +54,8 @@ final class Playback {
         boolean playWhenReady = true;
         boolean reconnectPending;
         long reconnectDelay;
+        long statusSince;
+        long retryAt;
         Runnable progressCheck;
         final Runnable reconnect = () -> request(this, api, channel, fallback, true);
 
@@ -101,6 +103,24 @@ final class Playback {
     private Status status(Slot slot) {
         boolean paused = !slot.playWhenReady;
         return slot.channel != null && !slot.status.failed() && paused ? Status.PAUSED : slot.status;
+    }
+
+    String primaryDetail() { return detail(primary); }
+    String secondaryDetail() { return detail(secondary); }
+    private String detail(Slot slot) {
+        Status status = status(slot);
+        if (status == Status.IDLE) return "";
+        long now = SystemClock.elapsedRealtime();
+        if (status == Status.RETRY_WAIT)
+            return context.getString(R.string.retry_countdown, Math.max(0, slot.retryAt - now) / 1000.0);
+        if (status.live() || status.failed() || status == Status.PAUSED) return context.getString(status.label);
+        long elapsed = Math.max(0, now - slot.statusSince) / 1000;
+        if (status == Status.BUFFERING && slot.player != null) {
+            double buffered = slot.player.buffered();
+            if (Double.isFinite(buffered) && buffered >= 0)
+                return context.getString(R.string.buffering_detail, buffered, elapsed);
+        }
+        return context.getString(R.string.loading_elapsed, context.getString(status.label), elapsed);
     }
 
     boolean canPause() { return primary.active(); }
@@ -162,6 +182,7 @@ final class Playback {
 
     private void request(Slot slot, Jellyfin api, Channels.Channel channel, boolean fallback, boolean recovering) {
         long generation = ++slot.generation;
+        slot.statusSince = SystemClock.elapsedRealtime();
         if (!recovering) slot.reconnectDelay = 0;
         Jellyfin.Stream old = detach(slot);
         Jellyfin previousApi = slot.api;
@@ -215,6 +236,7 @@ final class Playback {
     private void start(Slot slot, Jellyfin.Stream stream, long generation) {
         slot.stream = stream;
         slot.status = Status.PREPARING;
+        slot.statusSince = SystemClock.elapsedRealtime();
         changed.run();
         MpvView surface = view(slot);
         surface.whenReady(() -> {
@@ -265,7 +287,7 @@ final class Playback {
                                     : (state & 4) == 0 || surface.frames == firstFrame ? Status.WAITING_VIDEO
                                     : stream.compatible() ? Status.LIVE_COMPATIBLE : Status.LIVE;
                             if (next.live()) slot.reconnectDelay = 0;
-                            if (slot.status != next) { slot.status = next; changed.run(); }
+                            if (slot.status != next) { slot.status = next; slot.statusSince = now; changed.run(); }
                             ui.postDelayed(this, STATUS_POLL_MS);
                         }
                     };
@@ -293,6 +315,7 @@ final class Playback {
         ui.removeCallbacks(slot.reconnect);
         // Buffering alone is not a failure. Reopen after an error or end-of-stream.
         if (slot.reconnectPending && slot.playWhenReady) {
+            slot.retryAt = SystemClock.elapsedRealtime() + slot.reconnectDelay;
             ui.postDelayed(slot.reconnect, slot.reconnectDelay);
         }
     }

@@ -17,6 +17,8 @@ Playback uses **mpv only**, with an independent libmpv instance for each picture
 
 Startup with no rendered video is limited to 90 seconds, then shows a retryable error. After playback starts, 30 seconds without another rendered frame requests a fresh Jellyfin session. An ended or failed stream schedules a fresh session after 2.5 seconds, backing off to 30 seconds if repeated attempts cannot play. If Jellyfin itself is unavailable, server retries wait 30 seconds. Recovery releases the old player and tuner before opening another, preserves the other picture, and stops when playback is closed or paused. **Resume live** opens a fresh session at the live edge. **Try compatible stream** explicitly requests H.264/AAC conversion; it requires server transcoding permission. Audio/video output initialization failures show an error instead of endlessly retrying the same decoder.
 
+Loading messages show the current stage and elapsed seconds. Buffering also reports actual cached media seconds; retry waits show a countdown. These details update once a second only while loading.
+
 Playback timing uses separate budgets for separate jobs:
 
 | Timing | Value | Purpose |

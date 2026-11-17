@@ -61,6 +61,7 @@ public final class MainActivity extends ComponentActivity {
     static final int TEXT = 0xffececf0, DIM = 0xffb8bbc5, ACCENT = 0xffffc66d, PRIMARY = 0xff4a576c;
     private static final int PAGE = 256, GUIDE_BATCH = 16;
     private static final int GUIDE_HOURS = 3, WATCH_BAR_HEIGHT = 81;
+    private static final long LOADING_REFRESH_MS = 1_000;
     private final Handler ui = new Handler(Looper.getMainLooper());
     private final ExecutorService accounts = Executors.newSingleThreadExecutor();
     private final ExecutorService catalog = Executors.newSingleThreadExecutor();
@@ -124,6 +125,17 @@ public final class MainActivity extends ComponentActivity {
         watchOverlay.setVisibility(View.GONE);
         layoutInset();
     };
+    private final Runnable loadingRefresh = new Runnable() {
+        @Override public void run() {
+            if (!foreground || destroyed || player == null || api == null) return;
+            updatePlaybackDetails();
+            if (loading(player.primaryStatus()) || loading(player.secondaryStatus())) ui.postDelayed(this, LOADING_REFRESH_MS);
+        }
+    };
+    private static boolean loading(Playback.Status status) {
+        return status != Playback.Status.IDLE && status != Playback.Status.PAUSED && !status.live() && !status.failed();
+    }
+
     private final Runnable guideRefresh = this::visibleGuide;
     private final Runnable minute = new Runnable() {
         @Override public void run() {
@@ -500,7 +512,7 @@ public final class MainActivity extends ComponentActivity {
         watchTitle = text("", 16, TEXT); watchTitle.setSingleLine(); watchTitle.setEllipsize(TextUtils.TruncateAt.END);
         watchBar.addView(watchTitle, new LinearLayout.LayoutParams(0, -2, 1));
         watchStatus = text("", 14, DIM);
-        watchStatus.setSingleLine();
+        watchStatus.setMaxLines(2);
         watchStatus.setEllipsize(TextUtils.TruncateAt.END);
         watchStatus.setMaxWidth(dp(155));
         watchStatus.setPadding(dp(8), 0, dp(12), 0);
@@ -816,19 +828,26 @@ public final class MainActivity extends ComponentActivity {
         player.tune(api, selected, small);
     }
 
+    private void updatePlaybackDetails() {
+        Channels.Channel main = player.primary(), small = player.secondary();
+        mainMessage.setText(main == null ? getString(R.string.choose_channel)
+                : getString(R.string.playback_message, main.label(), player.primaryDetail()));
+        insetMessage.setText(small == null ? ""
+                : getString(R.string.playback_message, small.label(), player.secondaryDetail()));
+    }
+
     private void updatePlayback() {
         if (api == null || player == null) return;
         Channels.Channel main = player.primary(), small = player.secondary();
         Playback.Status status = player.primaryStatus(), smallStatus = player.secondaryStatus();
-        mainMessage.setText(main == null ? getString(R.string.choose_channel)
-                : getString(R.string.playback_message, main.label(), getString(status.label)));
+        ui.removeCallbacks(loadingRefresh);
+        updatePlaybackDetails();
+        if (foreground && (loading(status) || loading(smallStatus))) ui.postDelayed(loadingRefresh, LOADING_REFRESH_MS);
         mainMessage.setGravity(main == null ? Gravity.CENTER : Gravity.TOP | Gravity.START);
         mainMessage.setBackgroundColor(main == null ? 0x00000000 : 0xaa171719);
         mainMessage.setVisibility(status.live() || status == Playback.Status.PAUSED ? View.GONE : View.VISIBLE);
         inset.setVisibility(small == null ? View.GONE : View.VISIBLE);
         insetMessage.setBackgroundColor(0xaa171719);
-        insetMessage.setText(small == null ? ""
-                : getString(R.string.playback_message, small.label(), getString(smallStatus.label)));
         insetMessage.setVisibility(smallStatus.live() ? View.GONE : View.VISIBLE);
         watchTitle.setText(main == null ? "" : small == null ? main.label()
                 : getString(R.string.watch_title, main.label(), small.label()));
@@ -1216,7 +1235,7 @@ public final class MainActivity extends ComponentActivity {
     }
 
     @Override protected void onStop() {
-        foreground = false; ui.removeCallbacks(minute); ui.removeCallbacks(guideRefresh);
+        foreground = false; ui.removeCallbacks(loadingRefresh); ui.removeCallbacks(minute); ui.removeCallbacks(guideRefresh);
         ui.removeCallbacks(hideWatchControls);
         if (player != null) {
             resumeMain = player.primary(); resumeInset = player.secondary();
@@ -1233,7 +1252,7 @@ public final class MainActivity extends ComponentActivity {
     }
 
     @Override protected void onDestroy() {
-        destroyed = true; ++catalogGeneration; ++visibleGeneration;
+        destroyed = true; ui.removeCallbacks(loadingRefresh); ++catalogGeneration; ++visibleGeneration;
         ui.removeCallbacks(hideWatchControls);
         if (signIn != null) signIn.cancel();
         if (player != null) player.destroy(null);

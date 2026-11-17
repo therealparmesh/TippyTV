@@ -18,6 +18,7 @@ typedef struct {
     int ended;
     int fatal;
     double aspect;
+    double buffered;
 } Player;
 
 static void failure(JNIEnv *env, const char *message) {
@@ -52,6 +53,7 @@ JNIEXPORT jlong JNICALL Java_com_parmesh_livetv_MpvPlayer_create(JNIEnv *env, jc
         jobject surface, jstring url, jstring agent, jstring ca) {
     Player *p = calloc(1, sizeof(*p));
     if (!p) { failure(env, "Cannot allocate mpv player"); return 0; }
+    p->buffered = -1;
     p->mpv = mpv_create();
     p->surface = (*env)->NewGlobalRef(env, surface);
     if (!p->mpv || !p->surface) goto fail;
@@ -89,6 +91,7 @@ JNIEXPORT jlong JNICALL Java_com_parmesh_livetv_MpvPlayer_create(JNIEnv *env, jc
     if (mpv_set_option(p->mpv, "wid", MPV_FORMAT_INT64, &wid) < 0 || mpv_initialize(p->mpv) < 0) goto fail;
     mpv_observe_property(p->mpv, 0, "paused-for-cache", MPV_FORMAT_FLAG);
     mpv_observe_property(p->mpv, 1, "video-params/aspect", MPV_FORMAT_DOUBLE);
+    mpv_observe_property(p->mpv, 2, "demuxer-cache-duration", MPV_FORMAT_DOUBLE);
     const char *path = (*env)->GetStringUTFChars(env, url, NULL);
     if (!path) goto fail;
     const char *command[] = {"loadfile", path, NULL};
@@ -117,6 +120,8 @@ JNIEXPORT jint JNICALL Java_com_parmesh_livetv_MpvPlayer_poll(JNIEnv *env, jclas
                 p->buffering = *(int *)property->data;
             if (event->reply_userdata == 1 && property->format == MPV_FORMAT_DOUBLE && property->data)
                 p->aspect = *(double *)property->data;
+            if (event->reply_userdata == 2)
+                p->buffered = property->format == MPV_FORMAT_DOUBLE && property->data ? *(double *)property->data : -1;
         }
         if (event->event_id == MPV_EVENT_END_FILE) {
             mpv_event_end_file *end = event->data;
@@ -134,6 +139,10 @@ JNIEXPORT jint JNICALL Java_com_parmesh_livetv_MpvPlayer_poll(JNIEnv *env, jclas
 
 JNIEXPORT jdouble JNICALL Java_com_parmesh_livetv_MpvPlayer_aspect(JNIEnv *env, jclass type, jlong handle) {
     return ((Player *)(intptr_t)handle)->aspect;
+}
+
+JNIEXPORT jdouble JNICALL Java_com_parmesh_livetv_MpvPlayer_buffered(JNIEnv *env, jclass type, jlong handle) {
+    return ((Player *)(intptr_t)handle)->buffered;
 }
 
 JNIEXPORT void JNICALL Java_com_parmesh_livetv_MpvPlayer_property(JNIEnv *env, jclass type, jlong handle, jstring name, jstring value) {

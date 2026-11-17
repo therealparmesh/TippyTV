@@ -34,6 +34,7 @@ final class MpvPlayer {
                 prepare(context));
     }
     double aspect() { return aspect(handle); }
+    double buffered() { return buffered(handle); }
     int state() { return poll(handle); }
     String diagnostics() { return snapshot(handle); }
     void pause() { setPaused(true); }
@@ -44,6 +45,7 @@ final class MpvPlayer {
     private static native void environment(Context context);
     private static native long create(Surface surface, String url, String agent, String ca);
     private static native double aspect(long handle);
+    private static native double buffered(long handle);
     private static native int poll(long handle);
     private static native String snapshot(long handle);
     private static native void property(long handle, String name, String value);
