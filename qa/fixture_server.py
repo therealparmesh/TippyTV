@@ -162,7 +162,8 @@ class Handler(BaseHTTPRequestHandler):
             return self.result(204)
         if path.startswith('/Items/') and path.endswith('/PlaybackInfo'):
             profile=json.loads(payload)
-            if profile.get('EnableDirectPlay') is not False or not profile.get('AllowVideoStreamCopy') or not profile.get('AllowAudioStreamCopy'):
+            copy=not profile.get('EnableTranscoding')
+            if profile.get('EnableDirectPlay') is not False or profile.get('AllowVideoStreamCopy') != copy or profile.get('AllowAudioStreamCopy') != copy:
                 return self.result(400,{})
             if not profile.get('DeviceProfile',{}).get('TranscodingProfiles'):
                 return self.result(400,{})

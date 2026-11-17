@@ -218,7 +218,7 @@ final class Jellyfin {
         // Let Jellyfin own the provider connection and negotiate HLS, including stream copy.
         JSONObject body = new JSONObject().put("UserId", session.user).put("AutoOpenLiveStream", true)
                 .put("EnableDirectPlay", false).put("EnableDirectStream", true).put("EnableTranscoding", fallback)
-                .put("AllowVideoStreamCopy", true).put("AllowAudioStreamCopy", true)
+                .put("AllowVideoStreamCopy", !fallback).put("AllowAudioStreamCopy", !fallback)
                 .put("MaxStreamingBitrate", bitrate).put("MaxAudioChannels", audioChannels)
                 .put("DeviceProfile", new JSONObject().put("Name", "TippyTV")
                         .put("MaxStreamingBitrate", bitrate)
