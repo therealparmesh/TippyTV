@@ -16,6 +16,8 @@ typedef struct {
     int buffering;
     int playing;
     int ended;
+    int fatal;
+    double aspect;
 } Player;
 
 static void failure(JNIEnv *env, const char *message) {
@@ -47,7 +49,7 @@ static int option(JNIEnv *env, Player *p, const char *key, const char *value) {
 }
 
 JNIEXPORT jlong JNICALL Java_com_parmesh_livetv_MpvPlayer_create(JNIEnv *env, jclass type,
-        jobject surface, jstring url, jstring agent, jstring ca, jint width, jint height) {
+        jobject surface, jstring url, jstring agent, jstring ca) {
     Player *p = calloc(1, sizeof(*p));
     if (!p) { failure(env, "Cannot allocate mpv player"); return 0; }
     p->mpv = mpv_create();
@@ -59,8 +61,7 @@ JNIEXPORT jlong JNICALL Java_com_parmesh_livetv_MpvPlayer_create(JNIEnv *env, jc
         {"curl-enabled", "no"},
         {"config", "no"}, {"terminal", "no"}, {"input-default-bindings", "no"},
         {"input-vo-keyboard", "no"}, {"osc", "no"}, {"osd-level", "0"},
-        {"profile", "fast"}, {"vo", "gpu"}, {"gpu-context", "android"}, {"opengl-es", "yes"},
-        {"hwdec", "mediacodec,mediacodec-copy"}, {"ao", "audiotrack,opensles"},
+        {"vo", "mediacodec_embed"}, {"hwdec", "mediacodec"}, {"ao", "audiotrack,opensles"},
         {"audio-channels", "stereo"}, {"idle", "yes"}, {"keep-open", "no"},
         {"cache", "yes"}, {"cache-pause", "yes"}, {"cache-pause-initial", "yes"},
         {"cache-pause-wait", "2"}, {"cache-secs", "6"},
@@ -68,13 +69,10 @@ JNIEXPORT jlong JNICALL Java_com_parmesh_livetv_MpvPlayer_create(JNIEnv *env, jc
         {"stream-lavf-o", retries},
         {"demuxer-lavf-o", retries},
         {"network-timeout", "60"}, {"tls-verify", "yes"}, {"ytdl", "no"},
-        {"force-window", "yes"}, {"pause", "yes"}, {"volume", "0"}
+        {"pause", "yes"}, {"volume", "0"}
     };
     for (size_t i = 0; i < sizeof(options)/sizeof(options[0]); i++)
         if (option(env, p, options[i][0], options[i][1]) < 0) goto fail;
-    char size[48];
-    snprintf(size, sizeof(size), "%dx%d", width, height);
-    if (option(env, p, "android-surface-size", size) < 0) goto fail;
     const char *strings[] = {"user-agent", "tls-ca-file"};
     jstring values[] = {agent, ca};
     for (int i = 0; i < 2; i++) {
@@ -87,6 +85,7 @@ JNIEXPORT jlong JNICALL Java_com_parmesh_livetv_MpvPlayer_create(JNIEnv *env, jc
     int64_t wid = (intptr_t)p->surface;
     if (mpv_set_option(p->mpv, "wid", MPV_FORMAT_INT64, &wid) < 0 || mpv_initialize(p->mpv) < 0) goto fail;
     mpv_observe_property(p->mpv, 0, "paused-for-cache", MPV_FORMAT_FLAG);
+    mpv_observe_property(p->mpv, 1, "video-params/aspect", MPV_FORMAT_DOUBLE);
     const char *path = (*env)->GetStringUTFChars(env, url, NULL);
     if (!path) goto fail;
     const char *command[] = {"loadfile", path, NULL};
@@ -111,18 +110,27 @@ JNIEXPORT jint JNICALL Java_com_parmesh_livetv_MpvPlayer_poll(JNIEnv *env, jclas
         if (event->event_id == MPV_EVENT_PLAYBACK_RESTART) { p->buffering = 0; p->playing = 1; }
         if (event->event_id == MPV_EVENT_PROPERTY_CHANGE) {
             mpv_event_property *property = event->data;
-            if (property->format == MPV_FORMAT_FLAG && property->data) p->buffering = *(int *)property->data;
+            if (event->reply_userdata == 0 && property->format == MPV_FORMAT_FLAG && property->data)
+                p->buffering = *(int *)property->data;
+            if (event->reply_userdata == 1 && property->format == MPV_FORMAT_DOUBLE && property->data)
+                p->aspect = *(double *)property->data;
         }
         if (event->event_id == MPV_EVENT_END_FILE) {
             mpv_event_end_file *end = event->data;
             if (end->reason == MPV_END_FILE_REASON_EOF || end->reason == MPV_END_FILE_REASON_ERROR) {
                 p->ended = 1;
+                p->fatal = end->error == MPV_ERROR_VO_INIT_FAILED || end->error == MPV_ERROR_AO_INIT_FAILED
+                        || end->error == MPV_ERROR_UNSUPPORTED;
                 __android_log_print(ANDROID_LOG_INFO, "TippyMpv", "Stream ended: reason=%d error=%d", end->reason, end->error);
             }
         }
         if (event->event_id == MPV_EVENT_COMMAND_REPLY && event->error < 0) p->ended = 1;
     }
-    return p->ended | (p->buffering << 1) | (p->playing << 2);
+    return p->ended | (p->buffering << 1) | (p->playing << 2) | (p->fatal << 3);
+}
+
+JNIEXPORT jdouble JNICALL Java_com_parmesh_livetv_MpvPlayer_aspect(JNIEnv *env, jclass type, jlong handle) {
+    return ((Player *)(intptr_t)handle)->aspect;
 }
 
 JNIEXPORT void JNICALL Java_com_parmesh_livetv_MpvPlayer_property(JNIEnv *env, jclass type, jlong handle, jstring name, jstring value) {

@@ -240,6 +240,38 @@ def both_live():
                         for node in tree))
 
 
+# A marker near the top-right of each source must reach the corresponding
+# displayed corner; this catches a smaller picture surrounded by green padding.
+def video_geometry(aspect):
+    raw = adb('exec-out', 'screencap')
+    width, height, fmt = struct.unpack_from('<III', raw)
+    assert fmt == 1
+    pixels = memoryview(raw)[len(raw) - width * height * 4:]
+    content_w, content_h = min(width, height * aspect), min(height, width / aspect)
+    left, top = (width - content_w) / 2, (height - content_h) / 2
+    x, y = int(left + content_w * .94), int(top + content_h * .10)
+    red, green, blue = pixels[(y * width + x) * 4:(y * width + x) * 4 + 3]
+    assert red > 160 and blue > 160 and green < 100, 'Right edge is cropped, padded, or incorrectly scaled'
+    if aspect < width / height:
+        x, y = int(width * .03), int(height * .4)
+        assert max(pixels[(y * width + x) * 4:(y * width + x) * 4 + 3]) < 45, '4:3 picture was stretched'
+
+geometry_opened = request('/qa/status')['opened']
+for rendition, aspect in (('_hd', 16/9), ('_720', 16/9), ('_43', 4/3), ('', 16/9)):
+    request('/qa/rendition?name=' + rendition, {})
+    time.sleep(12)
+    controls_hidden()
+    for attempt in range(12):
+        try:
+            video_geometry(aspect)
+            break
+        except AssertionError:
+            if attempt == 11:raise
+            time.sleep(1)
+    pictures_visible()
+assert request('/qa/status')['opened'] == geometry_opened, 'Resolution change reopened a stream'
+print('PASS: 1080p → 720p → 4:3 → 16:9 preserve full picture, aspect ratio and PiP', flush=True)
+
 before_opened = request('/qa/status')['opened']
 request('/qa/advance_live_window', {})
 time.sleep(20)

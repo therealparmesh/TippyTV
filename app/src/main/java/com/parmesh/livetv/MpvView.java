@@ -2,6 +2,7 @@ package com.parmesh.livetv;
 
 import android.content.Context;
 import android.graphics.SurfaceTexture;
+import android.graphics.Matrix;
 import android.view.Surface;
 import android.view.TextureView;
 
@@ -20,7 +21,7 @@ final class MpvView extends TextureView implements TextureView.SurfaceTextureLis
 
     private Target target;
     private Runnable ready;
-    Runnable resized;
+    private double videoAspect;
     long frames;
 
     MpvView(Context context) {
@@ -30,6 +31,20 @@ final class MpvView extends TextureView implements TextureView.SurfaceTextureLis
         setOpaque(true);
     }
 
+    void aspect(double aspect) {
+        if (!Double.isFinite(aspect) || aspect <= 0 || aspect == videoAspect) return;
+        videoAspect = aspect;
+        fitVideo();
+    }
+    private void fitVideo() {
+        int width = getWidth(), height = getHeight();
+        if (videoAspect <= 0 || width == 0 || height == 0) return;
+        double viewAspect = (double) width / height;
+        Matrix matrix = new Matrix();
+        matrix.setScale((float) Math.min(1, videoAspect / viewAspect),
+                (float) Math.min(1, viewAspect / videoAspect), width / 2f, height / 2f);
+        setTransform(matrix);
+    }
     Target acquire() { return target == null ? null : target.retain(); }
     void whenReady(Runnable action) {
         ready = action;
@@ -40,7 +55,7 @@ final class MpvView extends TextureView implements TextureView.SurfaceTextureLis
         if (ready != null) { Runnable action = ready; ready = null; action.run(); }
     }
     @Override public void onSurfaceTextureSizeChanged(SurfaceTexture texture, int width, int height) {
-        if (resized != null) resized.run();
+        fitVideo();
     }
     @Override public boolean onSurfaceTextureDestroyed(SurfaceTexture texture) {
         target.release(); target = null;

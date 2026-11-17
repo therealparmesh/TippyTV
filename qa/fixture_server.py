@@ -7,7 +7,7 @@ ROOT=Path(os.environ.get('JELLYFIN_QA_MEDIA','/tmp/jellyfin-live-fixture'))
 PORT=int(os.environ.get('JELLYFIN_QA_PORT','18798'))
 start=time.time()
 state={'open':{},'encodings':set(),'opened':0,'closed':0,'guide':0,'favorites':set(),'writes':0,
-       'tokens':set(),'logins':0,'logouts':0,'open_at_logout':None,'replacement':False,'guide_failure':False,'sequence_offset':0,'media_failure':0,'media_failures':0,'open_delay_ms':0,'open_failure':0,'open_requests':0,'converted_requests':0,'interrupted':{},'peak_open':0,'slow_start':False,'slow_leases':set()}
+       'tokens':set(),'logins':0,'logouts':0,'open_at_logout':None,'replacement':False,'guide_failure':False,'sequence_offset':0,'rendition':'','media_failure':0,'media_failures':0,'open_delay_ms':0,'open_failure':0,'open_requests':0,'converted_requests':0,'interrupted':{},'peak_open':0,'slow_start':False,'slow_leases':set()}
 quick_connect={}
 lock=threading.Lock()
 channels=[{'Id':'a','Name':'Amber One','ChannelNumber':'1'},{'Id':'b','Name':'Blue Two','ChannelNumber':'2'}]
@@ -66,6 +66,8 @@ class Handler(BaseHTTPRequestHandler):
                 state['encodings'].add(q.get('lease',[''])[0])
                 offset=state['sequence_offset']
             n=max(4,int((time.time()-start)/2))+offset; file=path[1]
+            if file=='a':
+                with lock:file+=state['rendition']
             lines=['#EXTM3U','#EXT-X-VERSION:3','#EXT-X-TARGETDURATION:2',f'#EXT-X-MEDIA-SEQUENCE:{n-4}',
                    f'#EXT-X-DISCONTINUITY-SEQUENCE:{(n+7)//12}']
             for i in range(n-4,n+1):
@@ -138,6 +140,11 @@ class Handler(BaseHTTPRequestHandler):
             status=int(q.get('status',['0'])[0])
             if status not in (0,503):return self.result(400,{})
             with lock:state['open_failure']=status
+            return self.result(204)
+        if path=='/qa/rendition':
+            name=q.get('name',[''])[0]
+            if name not in ('','_hd','_720','_43'):return self.result(400,{})
+            with lock:state['rendition']=name;state['sequence_offset']+=60
             return self.result(204)
         if path=='/qa/slow_start':
             with lock:state['slow_start']=q.get('enabled',['1'])[0]=='1'

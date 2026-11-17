@@ -212,11 +212,10 @@ final class Playback {
             if (slot.generation != generation) return;
             MpvView.Target target = surface.acquire();
             if (target == null) return;
-            int width = surface.getWidth(), height = surface.getHeight();
             slot.tuner.execute(() -> {
                 MpvPlayer opened;
                 try {
-                    opened = new MpvPlayer(context, target, stream, width, height);
+                    opened = new MpvPlayer(context, target, stream);
                 } catch (java.io.IOException | RuntimeException | LinkageError error) {
                     target.release();
                     android.util.Log.e("TippyMpv", "Player initialization failed", error);
@@ -235,17 +234,17 @@ final class Playback {
                     long firstFrame = surface.frames;
                     configure(slot);
                     opened.setPaused(!slot.playWhenReady);
-                    surface.resized = () -> opened.resize(surface.getWidth(), surface.getHeight());
-                    surface.resized.run();
                     FrameProgress progress = new FrameProgress();
                     slot.progressCheck = new Runnable() {
                         @Override public void run() {
                             if (slot.generation != generation) return;
                             int state = opened.state();
+                            surface.aspect(opened.aspect());
                             long now = SystemClock.elapsedRealtime();
                             if ((state & 4) != 0 && surface.frames > firstFrame) progress.frame(surface.frames, now);
                             if ((state & 1) != 0) {
-                                reconnectLater(slot);
+                                if ((state & 8) != 0) finishWithError(slot, Status.STREAM_FAILED);
+                                else reconnectLater(slot);
                                 return;
                             }
                             if (progress.stalled(now, !slot.playWhenReady)) {
@@ -320,7 +319,6 @@ final class Playback {
         slot.progressCheck = null;
         MpvView surface = view(slot);
         surface.whenReady(null);
-        surface.resized = null;
         MpvPlayer oldPlayer;
         synchronized (slot) { oldPlayer = slot.player; slot.player = null; }
         if (oldPlayer != null) {

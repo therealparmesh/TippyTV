@@ -27,22 +27,23 @@ final class MpvPlayer {
         return cert.getAbsolutePath();
     }
 
-    MpvPlayer(Context context, MpvView.Target target, Jellyfin.Stream stream, int width, int height) throws IOException {
+    MpvPlayer(Context context, MpvView.Target target, Jellyfin.Stream stream) throws IOException {
         this.target = target;
         handle = create(target.surface, stream.url().toString(),
                 "TippyTV/" + BuildConfig.VERSION_NAME,
-                prepare(context), width, height);
+                prepare(context));
     }
+    double aspect() { return aspect(handle); }
     int state() { return poll(handle); }
     String diagnostics() { return snapshot(handle); }
     void pause() { setPaused(true); }
     void setPaused(boolean paused) { property(handle, "pause", paused ? "yes" : "no"); }
     void volume(int volume) { property(handle, "volume", Integer.toString(volume)); }
-    void resize(int width, int height) { property(handle, "android-surface-size", width + "x" + height); }
     void close() { try { destroy(handle); } finally { target.release(); } }
 
     private static native void environment(Context context);
-    private static native long create(Surface surface, String url, String agent, String ca, int width, int height);
+    private static native long create(Surface surface, String url, String agent, String ca);
+    private static native double aspect(long handle);
     private static native int poll(long handle);
     private static native String snapshot(long handle);
     private static native void property(long handle, String name, String value);
