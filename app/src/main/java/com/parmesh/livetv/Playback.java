@@ -14,6 +14,9 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.atomic.AtomicInteger;
 
 final class Playback {
+    private static final long STATUS_POLL_MS = 500;
+    private static final long FIRST_RETRY_MS = 3_000;
+    private static final long MAX_RETRY_MS = 30_000;
     enum Status {
         IDLE(0), TUNING(R.string.tuning), COMPATIBLE(R.string.trying_compatible),
         PREPARING(R.string.preparing_playback), WAITING_VIDEO(R.string.waiting_video), BUFFERING(R.string.buffering),
@@ -183,7 +186,7 @@ final class Playback {
                             && !(error instanceof Jellyfin.NoCompatibleStream)
                             && (!(error instanceof Jellyfin.HttpFailure http) || http.status == 408
                                     || http.status == 429 || http.status >= 500)) {
-                        reconnectLater(slot, 30_000);
+                        reconnectLater(slot, MAX_RETRY_MS);
                     } else {
                         slot.status = Status.TUNE_FAILED;
                         changed.run();
@@ -250,7 +253,7 @@ final class Playback {
                             if ((state & 4) != 0 && surface.frames > firstFrame) progress.frame(surface.frames, now);
                             if ((state & 1) != 0) {
                                 if ((state & 8) != 0) finishWithError(slot, Status.STREAM_FAILED);
-                                else reconnectLater(slot, 3_000);
+                                else reconnectLater(slot, FIRST_RETRY_MS);
                                 return;
                             }
                             if (progress.stalled(now, !slot.playWhenReady)) {
@@ -263,7 +266,7 @@ final class Playback {
                                     : stream.compatible() ? Status.LIVE_COMPATIBLE : Status.LIVE;
                             if (next.live()) slot.reconnectDelay = 0;
                             if (slot.status != next) { slot.status = next; changed.run(); }
-                            ui.postDelayed(this, 500);
+                            ui.postDelayed(this, STATUS_POLL_MS);
                         }
                     };
                     slot.progressCheck.run();
@@ -275,7 +278,7 @@ final class Playback {
     private void reconnectLater(Slot slot, long delay) {
         if (slot.reconnectPending) return;
         slot.reconnectPending = true;
-        slot.reconnectDelay = Math.max(delay, Math.min(30_000, slot.reconnectDelay * 2));
+        slot.reconnectDelay = Math.max(delay, Math.min(MAX_RETRY_MS, slot.reconnectDelay * 2));
         slot.status = Status.RETRY_WAIT;
         updateRecovery(slot);
         changed.run();
