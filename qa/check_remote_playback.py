@@ -124,10 +124,11 @@ def preview_letterbox():
     width, height, fmt = struct.unpack_from('<III', raw)
     assert fmt == 1
     pixels = memoryview(raw)[len(raw) - width * height * 4:]
-    y = int(bottom - bar / 2)
-    for x in range(left + (right - left) // 4, right - (right - left) // 4, 8):
-        rgb = pixels[(y * width + x) * 4:(y * width + x) * 4 + 3]
-        assert max(rgb) < 45, 'Preview letterbox contains colored or stale pixels'
+    for y in (int(top + bar / 2), int(bottom - bar / 2)):
+        for x in range(left + (right - left) // 4, right - (right - left) // 4, 8):
+            rgb = pixels[(y * width + x) * 4:(y * width + x) * 4 + 3]
+            assert max(rgb) < 45, 'Preview letterbox contains colored or stale pixels'
+
 
 
 request('/qa/guide_failure?enabled=1', {})
