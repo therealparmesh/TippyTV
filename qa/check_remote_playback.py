@@ -115,6 +115,21 @@ def controls_hidden():
     raise AssertionError('Fullscreen controls did not hide after playback settled')
 
 
+def preview_letterbox():
+    preview = next(n for n in nodes() if n.get('content-desc') == 'Full screen')
+    left, top, right, bottom = map(int, re.findall(r'\d+', preview.get('bounds')))
+    bar = ((bottom - top) - (right - left) * 9 / 16) / 2
+    assert bar > 8, 'Fixture needs a letterboxed preview'
+    raw = adb('exec-out', 'screencap')
+    width, height, fmt = struct.unpack_from('<III', raw)
+    assert fmt == 1
+    pixels = memoryview(raw)[len(raw) - width * height * 4:]
+    y = int(bottom - bar / 2)
+    for x in range(left + (right - left) // 4, right - (right - left) // 4, 8):
+        rgb = pixels[(y * width + x) * 4:(y * width + x) * 4 + 3]
+        assert max(rgb) < 45, 'Preview letterbox contains colored or stale pixels'
+
+
 request('/qa/guide_failure?enabled=1', {})
 session = request('/Users/AuthenticateByName', {'Username': 'remote-check', 'Pw': 'fixture'})
 seed = json.dumps({'base': f'http://10.0.2.2:{args.port}', 'token': session['AccessToken'],
@@ -181,6 +196,7 @@ time.sleep(45)
 assert request('/qa/status')['opened'] == slow_baseline + 1, 'Slow startup repeatedly reopened the channel'
 assert not any('Buffering' in n.get('text', '') or 'Opening channel' in n.get('text', '')
                for n in nodes()), 'Slow startup never reached playback'
+preview_letterbox()
 key(4)
 streams(0)
 request('/qa/slow_start?enabled=0', {})

@@ -28,7 +28,8 @@ final class MpvView extends TextureView implements TextureView.SurfaceTextureLis
         super(context);
         setSurfaceTextureListener(this);
         setFocusable(false);
-        setOpaque(true);
+        // Aspect fitting leaves uncovered pixels; let the parent's background show.
+        setOpaque(false);
     }
 
     void aspect(double aspect) {
