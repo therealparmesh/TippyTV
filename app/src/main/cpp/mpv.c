@@ -56,6 +56,7 @@ JNIEXPORT jlong JNICALL Java_com_parmesh_livetv_MpvPlayer_create(JNIEnv *env, jc
     p->surface = (*env)->NewGlobalRef(env, surface);
     if (!p->mpv || !p->surface) goto fail;
     // Route nested HLS requests through FFmpeg so the retry policy applies consistently.
+    // Retry sleeps total at most 10s; these do not include time spent in network I/O.
     const char *retries = "reconnect=1,reconnect_streamed=1,reconnect_on_network_error=1,reconnect_on_http_error=5xx,reconnect_delay_max=4,reconnect_max_retries=4,reconnect_delay_total_max=10";
     const char *options[][2] = {
         {"curl-enabled", "no"},
@@ -64,10 +65,12 @@ JNIEXPORT jlong JNICALL Java_com_parmesh_livetv_MpvPlayer_create(JNIEnv *env, jc
         {"vo", "mediacodec_embed"}, {"hwdec", "mediacodec"}, {"ao", "audiotrack,opensles"},
         {"audio-channels", "stereo"}, {"idle", "yes"}, {"keep-open", "no"},
         {"cache", "yes"}, {"cache-pause", "yes"}, {"cache-pause-initial", "yes"},
-        {"cache-pause-wait", "2"}, {"cache-secs", "6"},
+        // Three seconds to start/resume, then keep a small six-second cushion.
+        {"cache-pause-wait", "3"}, {"cache-secs", "6"},
         {"demuxer-max-bytes", "16777216"}, {"demuxer-max-back-bytes", "0"},
         {"stream-lavf-o", retries},
         {"demuxer-lavf-o", retries},
+        // Socket timeout, not the overall startup or rendered-frame deadline.
         {"network-timeout", "60"}, {"tls-verify", "yes"}, {"ytdl", "no"},
         {"pause", "yes"}, {"volume", "0"}
     };
