@@ -424,3 +424,24 @@ assert request('/qa/status')['open_requests'] > before_requests, 'Rapid tuning d
 crashes = adb('logcat', '-b', 'crash', '-d')
 assert b'Fatal signal' not in crashes and b'FATAL EXCEPTION' not in crashes, 'Player crashed during release regression'
 print('PASS: rapid channel replacement and background during startup release every tuner without a crash', flush=True)
+
+# Data can trickle forever without producing a frame. Startup must end in a
+# usable retry state, not an endless buffering/reconnect loop.
+adb('shell', 'am', 'force-stop', 'com.parmesh.livetv')
+adb('shell', 'am', 'start', '-n', 'com.parmesh.livetv/.MainActivity')
+for _ in range(10):
+    if any(n.get('text') == '1203 channels' for n in nodes()):break
+request('/qa/silent_start', {})
+key(20);key(23)
+opened_before_timeout = request('/qa/status')['opened']
+time.sleep(95)
+assert any('Could not play this stream' in n.get('text', '') for n in nodes()), 'Silent startup never reached an error state'
+streams(0)
+assert request('/qa/status')['opened'] == opened_before_timeout, 'Silent startup kept reopening sessions'
+request('/qa/silent_start?enabled=0', {})
+key(23)
+streams(1)
+time.sleep(6)
+key(3)
+streams(0)
+print('PASS: silent startup times out, releases its resources, and remains retryable', flush=True)

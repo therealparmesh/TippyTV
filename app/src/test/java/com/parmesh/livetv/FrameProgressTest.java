@@ -4,15 +4,20 @@ import org.junit.Test;
 import static org.junit.Assert.*;
 
 public class FrameProgressTest {
-    @Test public void slowStartupDoesNotTriggerRecovery() {
-        FrameProgress progress = new FrameProgress();
-        assertFalse(progress.stalled(120_000, false));
-        progress.frame(0, 120_000);
+    @Test public void startupHasABoundedGracePeriod() {
+        FrameProgress progress = new FrameProgress(0);
+        assertFalse(progress.stalled(35_000, false));
+        assertFalse(progress.started());
+        assertTrue(progress.stalled(90_000, false));
+        assertFalse(progress.stalled(120_000, true));
         assertFalse(progress.stalled(120_001, false));
+        progress.frame(0, 120_002);
+        assertTrue(progress.started());
+        assertFalse(progress.stalled(120_003, false));
     }
 
     @Test public void repeatedLastFrameDoesNotMaskStall() {
-        FrameProgress progress = new FrameProgress();
+        FrameProgress progress = new FrameProgress(0);
         progress.frame(100, 0);
         for (int now = 5_000; now < 30_000; now += 5_000) {
             progress.frame(100, now);
@@ -22,7 +27,7 @@ public class FrameProgressTest {
     }
 
     @Test public void progressingFramesAndPausePreventRecovery() {
-        FrameProgress progress = new FrameProgress();
+        FrameProgress progress = new FrameProgress(0);
         progress.frame(100, 0);
         progress.frame(200, 25_000);
         assertFalse(progress.stalled(30_000, false));

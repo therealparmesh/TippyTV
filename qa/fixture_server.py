@@ -7,7 +7,7 @@ ROOT=Path(os.environ.get('JELLYFIN_QA_MEDIA','/tmp/jellyfin-live-fixture'))
 PORT=int(os.environ.get('JELLYFIN_QA_PORT','18798'))
 start=time.time()
 state={'open':{},'encodings':set(),'opened':0,'closed':0,'guide':0,'favorites':set(),'writes':0,
-       'tokens':set(),'logins':0,'logouts':0,'open_at_logout':None,'replacement':False,'guide_failure':False,'sequence_offset':0,'rendition':'','media_failure':0,'media_failures':0,'open_delay_ms':0,'open_failure':0,'open_requests':0,'converted_requests':0,'interrupted':{},'peak_open':0,'slow_start':False,'slow_leases':set()}
+       'tokens':set(),'logins':0,'logouts':0,'open_at_logout':None,'replacement':False,'guide_failure':False,'sequence_offset':0,'rendition':'','silent_start':False,'media_failure':0,'media_failures':0,'open_delay_ms':0,'open_failure':0,'open_requests':0,'converted_requests':0,'interrupted':{},'peak_open':0,'slow_start':False,'slow_leases':set()}
 quick_connect={}
 lock=threading.Lock()
 channels=[{'Id':'a','Name':'Amber One','ChannelNumber':'1'},{'Id':'b','Name':'Blue Two','ChannelNumber':'2'}]
@@ -81,13 +81,14 @@ class Handler(BaseHTTPRequestHandler):
                 return self.result(200,(bytes([0x47,0x1f,0xff,0x10])+bytes([0xff])*184)*100,'video/mp2t')
             data=(ROOT/name).read_bytes();lease=q.get('lease',[''])[0]
             with lock:
-                slow=state['slow_start'] and lease not in state['slow_leases']
+                slow=(state['slow_start'] or state['silent_start']) and lease not in state['slow_leases']
+                delay=110 if state['silent_start'] else 35
                 if slow:state['slow_leases'].add(lease)
             if slow:
                 self.send_response(200);self.send_header('Content-Type','video/mp2t')
-                self.send_header('Content-Length',str(len(data)+188*35));self.end_headers()
+                self.send_header('Content-Length',str(len(data)+188*delay));self.end_headers()
                 try:
-                    for _ in range(35):
+                    for _ in range(delay):
                         self.wfile.write(bytes([0x47,0x1f,0xff,0x10])+bytes([0xff])*184)
                         self.wfile.flush();time.sleep(1)
                     self.wfile.write(data)
@@ -145,6 +146,9 @@ class Handler(BaseHTTPRequestHandler):
             name=q.get('name',[''])[0]
             if name not in ('','_hd','_720','_43'):return self.result(400,{})
             with lock:state['rendition']=name;state['sequence_offset']+=60
+            return self.result(204)
+        if path=='/qa/silent_start':
+            with lock:state['silent_start']=q.get('enabled',['1'])[0]=='1'
             return self.result(204)
         if path=='/qa/slow_start':
             with lock:state['slow_start']=q.get('enabled',['1'])[0]=='1'

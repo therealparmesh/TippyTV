@@ -93,7 +93,7 @@
     <string name="live_compatible_short">Live · Compatible</string>
     <string name="unavailable">Unavailable</string>
     <string name="tune_failed">Could not open this channel. Try again.</string>
-    <string name="stream_failed">This stream stopped. Try again.</string>
+    <string name="stream_failed">Could not play this stream. Try again.</string>
     <string name="playback_message">%1$s\n%2$s</string>
     <string name="watching_channel">Watching · %1$s</string>
     <string name="watch_title">%1$s  ·  Inset: %2$s</string>

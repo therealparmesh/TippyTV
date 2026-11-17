@@ -234,7 +234,7 @@ final class Playback {
                     long firstFrame = surface.frames;
                     configure(slot);
                     opened.setPaused(!slot.playWhenReady);
-                    FrameProgress progress = new FrameProgress();
+                    FrameProgress progress = new FrameProgress(SystemClock.elapsedRealtime());
                     slot.progressCheck = new Runnable() {
                         @Override public void run() {
                             if (slot.generation != generation) return;
@@ -248,7 +248,8 @@ final class Playback {
                                 return;
                             }
                             if (progress.stalled(now, !slot.playWhenReady)) {
-                                request(slot, slot.api, slot.channel, slot.fallback, true);
+                                if (progress.started()) request(slot, slot.api, slot.channel, slot.fallback, true);
+                                else finishWithError(slot, Status.STREAM_FAILED);
                                 return;
                             }
                             Status next = (state & 4) == 0 || (state & 2) != 0 || surface.frames == firstFrame ? Status.BUFFERING
