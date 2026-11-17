@@ -34,7 +34,7 @@ Playback timing uses separate budgets for separate jobs:
 | Jellyfin unavailable during recovery | 30 seconds between attempts | Avoid hammering an unavailable server |
 | Jellyfin API timeouts | 6-second connect, 15-second read, 24-second whole call | Bound metadata/session requests separately from media playback |
 
-These are targets and deadlines, not a guaranteed channel-opening time. Server negotiation precedes player startup, and live segments may arrive unevenly. Neither retry waits nor the 90-second startup deadline reserve that much media in memory.
+These are targets and deadlines, not a guaranteed channel-opening time. Server negotiation precedes player startup, and live segments may arrive unevenly. Neither retry waits nor the 90-second startup deadline reserve that much media in memory. A delivery gap longer than the available buffer can still pause playback; reducing the startup cushion does not prevent that.
 
 The app packages unmodified native mpv/FFmpeg binaries from the pinned upstream mpv-android release. The upstream app and its singleton JNI player wrapper are not packaged. Source/build links and licenses are in `third_party/mpv/README.md` and `app/src/main/assets/licenses`.
 
