@@ -15,8 +15,8 @@ import java.util.concurrent.atomic.AtomicInteger;
 
 final class Playback {
     private static final long STATUS_POLL_MS = 500;
-    private static final long FIRST_RETRY_MS = 3_000;
     private static final long MAX_RETRY_MS = 30_000;
+    private static final long[] RETRY_DELAYS_MS = {3_000, 5_000, 10_000, 15_000, MAX_RETRY_MS};
     enum Status {
         IDLE(0), TUNING(R.string.tuning), COMPATIBLE(R.string.trying_compatible),
         PREPARING(R.string.preparing_playback), WAITING_VIDEO(R.string.waiting_video), BUFFERING(R.string.buffering),
@@ -253,7 +253,7 @@ final class Playback {
                             if ((state & 4) != 0 && surface.frames > firstFrame) progress.frame(surface.frames, now);
                             if ((state & 1) != 0) {
                                 if ((state & 8) != 0) finishWithError(slot, Status.STREAM_FAILED);
-                                else reconnectLater(slot, FIRST_RETRY_MS);
+                                else reconnectLater(slot, 0);
                                 return;
                             }
                             if (progress.stalled(now, !slot.playWhenReady)) {
@@ -275,10 +275,15 @@ final class Playback {
         });
     }
 
+    static long nextRetryDelay(long previous) {
+        for (long delay : RETRY_DELAYS_MS) if (delay > previous) return delay;
+        return MAX_RETRY_MS;
+    }
+
     private void reconnectLater(Slot slot, long delay) {
         if (slot.reconnectPending) return;
         slot.reconnectPending = true;
-        slot.reconnectDelay = Math.max(delay, Math.min(MAX_RETRY_MS, slot.reconnectDelay * 2));
+        slot.reconnectDelay = Math.max(delay, nextRetryDelay(slot.reconnectDelay));
         slot.status = Status.RETRY_WAIT;
         updateRecovery(slot);
         changed.run();

@@ -28,7 +28,7 @@ Playback timing uses separate budgets for separate jobs:
 | Native network timeout | 60 seconds | Bound an individual stalled network operation |
 | No first video frame | 90 seconds after player initialization | Stop and show a retryable error |
 | No new frame after playback starts | 30 seconds | Reopen the live session; paused time is excluded |
-| Ended-stream retry | 3, 6, 12, 24, then 30 seconds | Back off repeated failures; playback resets the delay |
+| Ended-stream retry | 3, 5, 10, 15, then 30 seconds | Back off repeated failures; playback resets the delay |
 | Jellyfin unavailable during recovery | 30 seconds between attempts | Avoid hammering an unavailable server |
 | Jellyfin API timeouts | 6-second connect, 15-second read, 24-second whole call | Bound metadata/session requests separately from media playback |
 
