@@ -110,7 +110,7 @@ JNIEXPORT jint JNICALL Java_com_parmesh_livetv_MpvPlayer_poll(JNIEnv *env, jclas
     for (int i = 0; i < 64; i++) {
         mpv_event *event = mpv_wait_event(p->mpv, 0);
         if (event->event_id == MPV_EVENT_NONE) break;
-        if (event->event_id == MPV_EVENT_PLAYBACK_RESTART) { p->buffering = 0; p->playing = 1; }
+        if (event->event_id == MPV_EVENT_PLAYBACK_RESTART) p->playing = 1;
         if (event->event_id == MPV_EVENT_PROPERTY_CHANGE) {
             mpv_event_property *property = event->data;
             if (event->reply_userdata == 0 && property->format == MPV_FORMAT_FLAG && property->data)
