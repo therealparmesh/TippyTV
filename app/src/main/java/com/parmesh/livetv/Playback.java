@@ -48,6 +48,7 @@ final class Playback {
         boolean fallback;
         boolean playWhenReady = true;
         boolean reconnectPending;
+        long reconnectDelay;
         Runnable progressCheck;
         final Runnable reconnect = () -> request(this, api, channel, fallback, true);
 
@@ -156,6 +157,7 @@ final class Playback {
 
     private void request(Slot slot, Jellyfin api, Channels.Channel channel, boolean fallback, boolean recovering) {
         long generation = ++slot.generation;
+        if (!recovering) slot.reconnectDelay = 0;
         Jellyfin.Stream old = detach(slot);
         Jellyfin previousApi = slot.api;
         slot.api = api;
@@ -179,7 +181,7 @@ final class Playback {
                             && !(error instanceof Jellyfin.NoCompatibleStream)
                             && (!(error instanceof Jellyfin.HttpFailure http) || http.status == 408
                                     || http.status == 429 || http.status >= 500)) {
-                        reconnectLater(slot);
+                        reconnectLater(slot, 30_000);
                     } else {
                         slot.status = Status.TUNE_FAILED;
                         changed.run();
@@ -244,7 +246,7 @@ final class Playback {
                             if ((state & 4) != 0 && surface.frames > firstFrame) progress.frame(surface.frames, now);
                             if ((state & 1) != 0) {
                                 if ((state & 8) != 0) finishWithError(slot, Status.STREAM_FAILED);
-                                else reconnectLater(slot);
+                                else reconnectLater(slot, 3_000);
                                 return;
                             }
                             if (progress.stalled(now, !slot.playWhenReady)) {
@@ -254,6 +256,7 @@ final class Playback {
                             }
                             Status next = (state & 4) == 0 || (state & 2) != 0 || surface.frames == firstFrame ? Status.BUFFERING
                                     : stream.compatible() ? Status.LIVE_COMPATIBLE : Status.LIVE;
+                            if (next.live()) slot.reconnectDelay = 0;
                             if (slot.status != next) { slot.status = next; changed.run(); }
                             ui.postDelayed(this, 500);
                         }
@@ -264,9 +267,10 @@ final class Playback {
         });
     }
 
-    private void reconnectLater(Slot slot) {
+    private void reconnectLater(Slot slot, long delay) {
         if (slot.reconnectPending) return;
         slot.reconnectPending = true;
+        slot.reconnectDelay = Math.max(delay, Math.min(30_000, slot.reconnectDelay * 2));
         slot.status = Status.BUFFERING;
         updateRecovery(slot);
         changed.run();
@@ -276,7 +280,7 @@ final class Playback {
         ui.removeCallbacks(slot.reconnect);
         // Buffering alone is not a failure. Reopen after an error or end-of-stream.
         if (slot.reconnectPending && slot.playWhenReady) {
-            ui.postDelayed(slot.reconnect, 30_000);
+            ui.postDelayed(slot.reconnect, slot.reconnectDelay);
         }
     }
 

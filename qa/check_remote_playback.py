@@ -291,9 +291,27 @@ else:raise AssertionError('Playback did not resume after a brief outage')
 assert request('/qa/status')['opened'] == before_opened, 'Brief outage reopened streams'
 print('PASS: brief media outage resumes on existing streams', flush=True)
 
+# Persistent failures must back off rather than continuously reopening tuners.
+backoff_before = request('/qa/status')
+request('/qa/media_failure?status=403', {})
+time.sleep(35)
+backoff_after = request('/qa/status')
+assert backoff_after['media_failures'] > backoff_before['media_failures']
+assert backoff_after['open_requests'] - backoff_before['open_requests'] <= 8, 'Persistent failure caused a busy retry loop'
+request('/qa/media_failure?status=0', {})
+for _ in range(15):
+    if both_live():break
+    time.sleep(2)
+else:raise AssertionError('Playback did not resume after backed-off retries')
+assert request('/qa/status')['converted_requests'] == backoff_before['converted_requests']
+streams(2)
+print('PASS: persistent failures back off and resume without enabling transcoding', flush=True)
+
+
 # Only the old lease fails: recovery must obtain a fresh URL while the inset plays.
 for mode in ('503', '403', 'ended', 'empty'):
     baseline = request('/qa/status')
+    interrupted_at = time.monotonic()
     request('/qa/interrupt?channel=a&mode=' + mode, {})
     deadline = time.monotonic() + 90
     while time.monotonic() < deadline:
@@ -305,6 +323,7 @@ for mode in ('503', '403', 'ended', 'empty'):
     assert state['closed'] == baseline['closed'] + 1, ('Old lease leaked', mode, state)
     assert state['converted_requests'] == baseline['converted_requests'], 'Network recovery requested transcoding'
     assert state['open'] == 2 and state['peak_open'] == 2, 'Recovery exceeded two tuner leases'
+    if mode == 'ended':assert time.monotonic() - interrupted_at < 30, 'Ended stream waited too long to recover'
     print('PASS: fresh-session recovery for ' + mode + ', inset preserved, no transcoding or tuner leak', flush=True)
 
 # A server outage during renegotiation must keep waiting, then recover.
