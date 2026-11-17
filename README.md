@@ -13,22 +13,22 @@ A standalone, Darcula-colored Android TV and Fire OS client for Jellyfin Live TV
 
 Live streams use Jellyfin’s negotiated HLS endpoint instead of bypassing the server with provider URLs. The normal profile allows video/audio stream copy; Jellyfin decides whether the source needs conversion. Closing either picture stops its server remux/encoding job and live-TV lease.
 
-Playback uses **mpv only**, with an independent libmpv instance for each picture. Video is decoded directly into an Android surface, avoiding GPU image-reader and copied-decoder buffers that can produce green padding on TV hardware. Each picture keeps its aspect ratio when resized. Use **Try compatible stream** if the device cannot decode a channel. The initial/rebuffer target is three seconds; read-ahead targets six seconds and is capped at 16 MiB per picture. There is no disk media cache. FFmpeg retries transient network and HTTP 5xx failures with bounded backoff before app-level session recovery. Swapping changes the pictures' bounds and audio volume without replacing their native rendering surfaces.
+Playback uses **mpv only**, with an independent libmpv instance for each picture. Video is decoded directly into an Android surface, avoiding GPU image-reader and copied-decoder buffers that can produce green padding on TV hardware. Each picture keeps its aspect ratio when resized. Use **Try compatible stream** if the device cannot decode a channel. The initial/rebuffer target is 2.5 seconds; read-ahead targets five seconds and is capped at 16 MiB per picture. There is no disk media cache. FFmpeg retries transient network and HTTP 5xx failures with bounded backoff before app-level session recovery. Swapping changes the pictures' bounds and audio volume without replacing their native rendering surfaces.
 
-Startup with no rendered video is limited to 90 seconds, then shows a retryable error. After playback starts, 30 seconds without another rendered frame requests a fresh Jellyfin session. An ended or failed stream schedules a fresh session after three seconds, backing off to 30 seconds if repeated attempts cannot play. If Jellyfin itself is unavailable, server retries wait 30 seconds. Recovery releases the old player and tuner before opening another, preserves the other picture, and stops when playback is closed or paused. **Resume live** opens a fresh session at the live edge. **Try compatible stream** explicitly requests H.264/AAC conversion; it requires server transcoding permission. Audio/video output initialization failures show an error instead of endlessly retrying the same decoder.
+Startup with no rendered video is limited to 90 seconds, then shows a retryable error. After playback starts, 30 seconds without another rendered frame requests a fresh Jellyfin session. An ended or failed stream schedules a fresh session after 2.5 seconds, backing off to 30 seconds if repeated attempts cannot play. If Jellyfin itself is unavailable, server retries wait 30 seconds. Recovery releases the old player and tuner before opening another, preserves the other picture, and stops when playback is closed or paused. **Resume live** opens a fresh session at the live edge. **Try compatible stream** explicitly requests H.264/AAC conversion; it requires server transcoding permission. Audio/video output initialization failures show an error instead of endlessly retrying the same decoder.
 
 Playback timing uses separate budgets for separate jobs:
 
 | Timing | Value | Purpose |
 | --- | --- | --- |
-| Initial/rebuffer target | 3 seconds of media | Small cushion before starting or resuming |
-| Read-ahead target | 6 seconds, capped at 16 MiB per picture | Absorb short delivery gaps |
+| Initial/rebuffer target | 2.5 seconds of media | Small cushion before starting or resuming |
+| Read-ahead target | 5 seconds, capped at 16 MiB per picture | Absorb short delivery gaps |
 | Player status sampling | 500 ms | Observe state and rendered-frame progress |
 | Native network retry sleeps | Up to 4 retries, 4 seconds per delay, 10 seconds total | Retry transient transport failures; network I/O time is separate |
 | Native network timeout | 60 seconds | Bound an individual stalled network operation |
 | No first video frame | 90 seconds after player initialization | Stop and show a retryable error |
 | No new frame after playback starts | 30 seconds | Reopen the live session; paused time is excluded |
-| Ended-stream retry | 3, 5, 10, 15, then 30 seconds | Back off repeated failures; playback resets the delay |
+| Ended-stream retry | 2.5, 5, 10, 15, then 30 seconds | Back off repeated failures; playback resets the delay |
 | Jellyfin unavailable during recovery | 30 seconds between attempts | Avoid hammering an unavailable server |
 | Jellyfin API timeouts | 6-second connect, 15-second read, 24-second whole call | Bound metadata/session requests separately from media playback |
 

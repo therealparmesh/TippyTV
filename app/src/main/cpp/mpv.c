@@ -65,8 +65,8 @@ JNIEXPORT jlong JNICALL Java_com_parmesh_livetv_MpvPlayer_create(JNIEnv *env, jc
         {"vo", "mediacodec_embed"}, {"hwdec", "mediacodec"}, {"ao", "audiotrack,opensles"},
         {"audio-channels", "stereo"}, {"idle", "yes"}, {"keep-open", "no"},
         {"cache", "yes"}, {"cache-pause", "yes"}, {"cache-pause-initial", "yes"},
-        // Three seconds to start/resume, then keep a small six-second cushion.
-        {"cache-pause-wait", "3"}, {"cache-secs", "6"},
+        // A small startup/rebuffer cushion, with bounded read-ahead.
+        {"cache-pause-wait", "2.5"}, {"cache-secs", "5"},
         {"demuxer-max-bytes", "16777216"}, {"demuxer-max-back-bytes", "0"},
         {"stream-lavf-o", retries},
         {"demuxer-lavf-o", retries},

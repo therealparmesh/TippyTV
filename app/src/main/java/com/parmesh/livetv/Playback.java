@@ -16,7 +16,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 final class Playback {
     private static final long STATUS_POLL_MS = 500;
     private static final long MAX_RETRY_MS = 30_000;
-    private static final long[] RETRY_DELAYS_MS = {3_000, 5_000, 10_000, 15_000, MAX_RETRY_MS};
+    private static final long[] RETRY_DELAYS_MS = {2_500, 5_000, 10_000, 15_000, MAX_RETRY_MS};
     enum Status {
         IDLE(0), TUNING(R.string.tuning), COMPATIBLE(R.string.trying_compatible),
         PREPARING(R.string.preparing_playback), WAITING_VIDEO(R.string.waiting_video), BUFFERING(R.string.buffering),
