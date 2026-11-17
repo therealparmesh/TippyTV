@@ -81,9 +81,13 @@
     <string name="close_inset">Close inset</string>
     <string name="retry">Try again</string>
     <string name="retry_inset">Retry inset</string>
-    <string name="tuning">Opening channel…</string>
-    <string name="trying_compatible">Trying another stream…</string>
-    <string name="buffering">Buffering…</string>
+    <string name="tuning">Requesting stream from Jellyfin…</string>
+    <string name="trying_compatible">Requesting a compatible stream…</string>
+    <string name="preparing_playback">Preparing player…</string>
+    <string name="waiting_video">Waiting for video…</string>
+    <string name="buffering">Buffering video…</string>
+    <string name="waiting_reconnect">Stream interrupted. Waiting to retry…</string>
+    <string name="reconnecting">Reconnecting to Jellyfin…</string>
     <string name="pause">Pause</string>
     <string name="paused_channel">Paused · %1$s</string>
     <string name="paused">Paused</string>

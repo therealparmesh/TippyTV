@@ -15,7 +15,9 @@ import java.util.concurrent.atomic.AtomicInteger;
 
 final class Playback {
     enum Status {
-        IDLE(0), TUNING(R.string.tuning), COMPATIBLE(R.string.trying_compatible), BUFFERING(R.string.buffering),
+        IDLE(0), TUNING(R.string.tuning), COMPATIBLE(R.string.trying_compatible),
+        PREPARING(R.string.preparing_playback), WAITING_VIDEO(R.string.waiting_video), BUFFERING(R.string.buffering),
+        RETRY_WAIT(R.string.waiting_reconnect), RECONNECTING(R.string.reconnecting),
         LIVE(R.string.live), LIVE_COMPATIBLE(R.string.live_compatible), PAUSED(R.string.paused),
         TUNE_FAILED(R.string.tune_failed), STREAM_FAILED(R.string.stream_failed);
 
@@ -163,7 +165,7 @@ final class Playback {
         slot.api = api;
         slot.channel = channel;
         slot.fallback = fallback;
-        slot.status = fallback ? Status.COMPATIBLE : Status.TUNING;
+        slot.status = recovering ? Status.RECONNECTING : fallback ? Status.COMPATIBLE : Status.TUNING;
         changed.run();
         boolean small = slot == secondary;
         slot.tuner.execute(() -> {
@@ -209,6 +211,8 @@ final class Playback {
 
     private void start(Slot slot, Jellyfin.Stream stream, long generation) {
         slot.stream = stream;
+        slot.status = Status.PREPARING;
+        changed.run();
         MpvView surface = view(slot);
         surface.whenReady(() -> {
             if (slot.generation != generation) return;
@@ -254,7 +258,8 @@ final class Playback {
                                 else finishWithError(slot, Status.STREAM_FAILED);
                                 return;
                             }
-                            Status next = (state & 4) == 0 || (state & 2) != 0 || surface.frames == firstFrame ? Status.BUFFERING
+                            Status next = (state & 2) != 0 ? Status.BUFFERING
+                                    : (state & 4) == 0 || surface.frames == firstFrame ? Status.WAITING_VIDEO
                                     : stream.compatible() ? Status.LIVE_COMPATIBLE : Status.LIVE;
                             if (next.live()) slot.reconnectDelay = 0;
                             if (slot.status != next) { slot.status = next; changed.run(); }
@@ -271,7 +276,7 @@ final class Playback {
         if (slot.reconnectPending) return;
         slot.reconnectPending = true;
         slot.reconnectDelay = Math.max(delay, Math.min(30_000, slot.reconnectDelay * 2));
-        slot.status = Status.BUFFERING;
+        slot.status = Status.RETRY_WAIT;
         updateRecovery(slot);
         changed.run();
     }

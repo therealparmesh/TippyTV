@@ -194,15 +194,15 @@ slow_baseline = request('/qa/status')['opened']
 key(23)
 time.sleep(45)
 assert request('/qa/status')['opened'] == slow_baseline + 1, 'Slow startup repeatedly reopened the channel'
-assert not any('Buffering' in n.get('text', '') or 'Opening channel' in n.get('text', '')
-               for n in nodes()), 'Slow startup never reached playback'
+assert 'main status=LIVE ' in adb('shell', 'dumpsys', 'activity', 'com.parmesh.livetv').decode(), 'Slow startup never reached playback'
 preview_letterbox()
 key(4)
 streams(0)
 request('/qa/slow_start?enabled=0', {})
 print('PASS: slow startup finishes on the original session through Jellyfin HLS', flush=True)
-request('/qa/open_delay?ms=3000', {})
+request('/qa/open_delay?ms=8000', {})
 key(23)
+assert any('Requesting stream from Jellyfin' in n.get('text', '') for n in nodes()), 'Pending stream request has no detailed status'
 assert request('/qa/status')['open'] == 0, 'Fixture did not delay the tune response'
 key(127)  # Pause while PlaybackInfo is still pending, before a player exists.
 streams(1)
@@ -250,10 +250,8 @@ controls_hidden()
 pictures_visible()
 def both_live():
     key(19)
-    tree = nodes()
-    return (any(node.get('text') == 'Live' for node in tree)
-            and not any('Buffering' in node.get('text', '') or 'Tuning' in node.get('text', '')
-                        for node in tree))
+    dump = adb('shell', 'dumpsys', 'activity', 'com.parmesh.livetv').decode()
+    return len(re.findall(r'TippyMPV (?:main|inset) status=LIVE(?:_COMPATIBLE)? ', dump)) == 2
 
 
 # A marker near the top-right of each source must reach the corresponding
