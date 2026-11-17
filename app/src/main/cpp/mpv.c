@@ -10,6 +10,13 @@
 extern int av_jni_set_java_vm(void *, void *);
 extern int av_jni_set_android_app_ctx(void *, void *);
 
+static const char *metrics[] = {"time-pos", "demuxer-cache-duration", "cache-buffering-state", "avsync",
+    "decoder-frame-drop-count", "frame-drop-count", "audio-pts", "volume"};
+#define METRIC_COUNT (sizeof(metrics) / sizeof(metrics[0]))
+#define BUFFERED_METRIC 1
+#define METRIC_EVENT 10
+#define DECODER_EVENT (METRIC_EVENT + METRIC_COUNT)
+
 typedef struct {
     mpv_handle *mpv;
     jobject surface;
@@ -18,7 +25,9 @@ typedef struct {
     int ended;
     int fatal;
     double aspect;
-    double buffered;
+    double metrics[METRIC_COUNT];
+    int metric_available[METRIC_COUNT];
+    char decoder[33];
 } Player;
 
 static void failure(JNIEnv *env, const char *message) {
@@ -53,7 +62,6 @@ JNIEXPORT jlong JNICALL Java_com_parmesh_livetv_MpvPlayer_create(JNIEnv *env, jc
         jobject surface, jstring url, jstring agent, jstring ca) {
     Player *p = calloc(1, sizeof(*p));
     if (!p) { failure(env, "Cannot allocate mpv player"); return 0; }
-    p->buffered = -1;
     p->mpv = mpv_create();
     p->surface = (*env)->NewGlobalRef(env, surface);
     if (!p->mpv || !p->surface) goto fail;
@@ -91,7 +99,11 @@ JNIEXPORT jlong JNICALL Java_com_parmesh_livetv_MpvPlayer_create(JNIEnv *env, jc
     if (mpv_set_option(p->mpv, "wid", MPV_FORMAT_INT64, &wid) < 0 || mpv_initialize(p->mpv) < 0) goto fail;
     mpv_observe_property(p->mpv, 0, "paused-for-cache", MPV_FORMAT_FLAG);
     mpv_observe_property(p->mpv, 1, "video-params/aspect", MPV_FORMAT_DOUBLE);
-    mpv_observe_property(p->mpv, 2, "demuxer-cache-duration", MPV_FORMAT_DOUBLE);
+    // Observe on the worker at initialization; never synchronously query the core
+    // from Android's UI thread, including through dumpsys diagnostics.
+    for (size_t i = 0; i < METRIC_COUNT; i++)
+        mpv_observe_property(p->mpv, METRIC_EVENT + i, metrics[i], MPV_FORMAT_DOUBLE);
+    mpv_observe_property(p->mpv, DECODER_EVENT, "hwdec-current", MPV_FORMAT_STRING);
     const char *path = (*env)->GetStringUTFChars(env, url, NULL);
     if (!path) goto fail;
     const char *command[] = {"loadfile", path, NULL};
@@ -120,8 +132,16 @@ JNIEXPORT jint JNICALL Java_com_parmesh_livetv_MpvPlayer_poll(JNIEnv *env, jclas
                 p->buffering = *(int *)property->data;
             if (event->reply_userdata == 1 && property->format == MPV_FORMAT_DOUBLE && property->data)
                 p->aspect = *(double *)property->data;
-            if (event->reply_userdata == 2)
-                p->buffered = property->format == MPV_FORMAT_DOUBLE && property->data ? *(double *)property->data : -1;
+            if (event->reply_userdata >= METRIC_EVENT && event->reply_userdata < DECODER_EVENT) {
+                size_t i = event->reply_userdata - METRIC_EVENT;
+                p->metric_available[i] = property->format == MPV_FORMAT_DOUBLE && property->data;
+                if (p->metric_available[i]) p->metrics[i] = *(double *)property->data;
+            }
+            if (event->reply_userdata == DECODER_EVENT) {
+                const char *decoder = property->format == MPV_FORMAT_STRING && property->data
+                        ? *(char **)property->data : "";
+                snprintf(p->decoder, sizeof(p->decoder), "%s", decoder);
+            }
         }
         if (event->event_id == MPV_EVENT_END_FILE) {
             mpv_event_end_file *end = event->data;
@@ -142,7 +162,8 @@ JNIEXPORT jdouble JNICALL Java_com_parmesh_livetv_MpvPlayer_aspect(JNIEnv *env, 
 }
 
 JNIEXPORT jdouble JNICALL Java_com_parmesh_livetv_MpvPlayer_buffered(JNIEnv *env, jclass type, jlong handle) {
-    return ((Player *)(intptr_t)handle)->buffered;
+    Player *p = (Player *)(intptr_t)handle;
+    return p->metric_available[BUFFERED_METRIC] ? p->metrics[BUFFERED_METRIC] : -1;
 }
 
 JNIEXPORT void JNICALL Java_com_parmesh_livetv_MpvPlayer_property(JNIEnv *env, jclass type, jlong handle, jstring name, jstring value) {
@@ -167,19 +188,15 @@ JNIEXPORT void JNICALL Java_com_parmesh_livetv_MpvPlayer_destroy(JNIEnv *env, jc
 
 JNIEXPORT jstring JNICALL Java_com_parmesh_livetv_MpvPlayer_snapshot(JNIEnv *env, jclass type, jlong handle) {
     Player *p = (Player *)(intptr_t)handle;
-    const char *names[] = {"time-pos", "demuxer-cache-duration", "cache-buffering-state", "avsync", "decoder-frame-drop-count", "frame-drop-count", "audio-pts", "volume"};
     char text[768];
     size_t offset = 0;
-    for (size_t i = 0; i < sizeof(names)/sizeof(names[0]); i++) {
-        double value;
-        if (mpv_get_property(p->mpv, names[i], MPV_FORMAT_DOUBLE, &value) >= 0) {
-            int written = snprintf(text + offset, sizeof(text) - offset, "%s=%.3f ", names[i], value);
+    for (size_t i = 0; i < METRIC_COUNT; i++) {
+        if (p->metric_available[i]) {
+            int written = snprintf(text + offset, sizeof(text) - offset, "%s=%.3f ", metrics[i], p->metrics[i]);
             if (written < 0 || (size_t)written >= sizeof(text) - offset) { offset = sizeof(text) - 1; break; }
             offset += (size_t)written;
         }
     }
-    char *decoder = mpv_get_property_string(p->mpv, "hwdec-current");
-    snprintf(text + offset, sizeof(text) - offset, "hwdec=%.32s", decoder ? decoder : "unavailable");
-    mpv_free(decoder);
+    snprintf(text + offset, sizeof(text) - offset, "hwdec=%s", p->decoder[0] ? p->decoder : "unavailable");
     return (*env)->NewStringUTF(env, text);
 }
