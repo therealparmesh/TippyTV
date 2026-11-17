@@ -167,7 +167,7 @@ JNIEXPORT void JNICALL Java_com_parmesh_livetv_MpvPlayer_destroy(JNIEnv *env, jc
 
 JNIEXPORT jstring JNICALL Java_com_parmesh_livetv_MpvPlayer_snapshot(JNIEnv *env, jclass type, jlong handle) {
     Player *p = (Player *)(intptr_t)handle;
-    const char *names[] = {"time-pos", "demuxer-cache-duration", "cache-buffering-state", "avsync", "decoder-frame-drop-count", "frame-drop-count"};
+    const char *names[] = {"time-pos", "demuxer-cache-duration", "cache-buffering-state", "avsync", "decoder-frame-drop-count", "frame-drop-count", "audio-pts", "volume"};
     char text[768];
     size_t offset = 0;
     for (size_t i = 0; i < sizeof(names)/sizeof(names[0]); i++) {
