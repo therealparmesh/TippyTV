@@ -11,17 +11,15 @@ A standalone, Dracula-themed Android TV and Fire OS client for Jellyfin Live TV 
 5. **Search** accepts names and channel numbers. **Favorites** uses the active Jellyfin account or stores favorites locally for a playlist. **Jump** goes to a letter or to the first or last channel. Press Left from any channel to reach **−50** and **+50**. Press Up to return to the selected channel. Page, channel, and fast-forward or rewind buttons also skip 50 channels where supported.
 6. **Guide** shows the selected channel’s schedule. **Earlier** and **Later** step through three-hour windows. **Now** returns to current listings.
 
-Open **Profile → Switch profile** to switch accounts or add a playlist. Startup opens the last selected profile. A playlist profile takes a name, an M3U URL, and an optional XMLTV guide URL. Paste a Gist page to choose a playlist file and then a guide file, or choose **Skip guide**. Raw URLs work directly. Guide entries match the playlist’s `tvg-id` to the XMLTV channel ID. Both pictures use the active profile. Direct playlists play on the TV and require a supported stream format.
+From sign-in, choose **Profiles** to add a playlist. From the channel browser, open **Profile → Switch profile** to switch accounts or add a playlist. Startup opens the last selected profile. A playlist profile takes a name, an M3U URL, and an optional XMLTV guide URL. Paste a Gist page to choose a playlist file and then a guide file, or choose **Skip guide**. Raw URLs work directly. Guide entries match the playlist’s `tvg-id` to the XMLTV channel ID. Both pictures use the active profile. Direct playlists play on the TV and require a supported stream format.
 
 Jellyfin streams use Jellyfin’s negotiated HLS endpoint instead of bypassing the server with provider URLs. The normal profile allows video/audio stream copy; Jellyfin decides whether the source needs conversion. Closing either picture stops its server remux/encoding job and live-TV lease.
 
-Playback uses **mpv only**, with an independent libmpv instance for each picture. Video is decoded directly into an Android surface, avoiding GPU image-reader and copied-decoder buffers that can produce green padding on TV hardware. Each video surface is sized to the picture’s aspect ratio; the surrounding container draws the letterbox bars without transforming the texture. Use **Try compatible stream** if the device cannot decode a channel. The initial/rebuffer target is 2.5 seconds; read-ahead targets five seconds and is capped at 16 MiB per picture. There is no disk media cache. FFmpeg retries transient network and HTTP 5xx failures with bounded backoff before app-level session recovery. Swapping changes the pictures' bounds and audio volume without replacing their native rendering surfaces.
+Each picture has its own mpv player. Swapping pictures keeps both rendering surfaces attached and transfers audio to the main picture. The TV fits each surface to the video aspect ratio and draws letterboxing around it. Playback buffers in memory.
 
-Startup with no rendered video is limited to 90 seconds, then shows a retryable error. After playback starts, 30 seconds without another rendered frame requests a fresh Jellyfin session. An ended or failed stream schedules a fresh session after 2.5 seconds, backing off to 30 seconds if repeated attempts cannot play. If Jellyfin itself is unavailable, server retries wait 30 seconds. Recovery releases the old player and tuner before opening another, preserves the other picture, and stops when playback is closed or paused. **Resume live** opens a fresh session at the live edge. **Try compatible stream** explicitly requests H.264/AAC conversion; it requires server transcoding permission. Audio/video output initialization failures show an error instead of endlessly retrying the same decoder.
+Jellyfin users can choose **Try a compatible stream** to request H.264/AAC conversion when a device cannot decode a channel. This requires server transcoding permission. Direct playlists play the supplied URL. During recovery TippyTV reopens the Jellyfin session or rereads the playlist for the channel’s current URL. Decoder and audio-output initialization errors show a retry action.
 
-Loading messages show the current stage and elapsed seconds. Buffering also reports actual cached media seconds; retry waits show a countdown. These details update once a second only while loading.
-
-Playback timing uses separate budgets for separate jobs:
+The loading message shows elapsed time, cached media seconds when available, or a reconnect countdown.
 
 | Timing | Value | Purpose |
 | --- | --- | --- |
@@ -40,17 +38,17 @@ These are targets and deadlines, not a guaranteed channel-opening time. Server n
 
 The app packages unmodified native mpv/FFmpeg binaries from the pinned upstream mpv-android release. The upstream app and its singleton JNI player wrapper are not packaged. Source/build links and licenses are in `third_party/mpv/README.md` and `app/src/main/assets/licenses`.
 
-Channel metadata is loaded in 256-item pages with images and programme data omitted. A recycled list displays it; normalized search keys are computed once per channel and filtering runs off the main thread. Guide requests cover visible rows in batches of at most 16 channels, with a bounded, expiring cache. If the server has no programmes in the current window, the app avoids querying every channel.
+Jellyfin channel metadata is loaded in 256-item pages with images and programme data omitted. A recycled list displays it; normalized search keys are computed once per channel and filtering runs off the main thread. Guide requests cover visible rows in batches of at most 16 channels, with a bounded, expiring cache. If the server has no programmes in the current window, the app avoids querying every channel.
 
 ## Build
 
 Use JDK 21, Android SDK 37, NDK 28.2.13676358, and CMake 3.22.1. Run `python3 tools/prepare-mpv.py` once to fetch and checksum-verify the pinned ARMv7/ARM64 libraries and CA bundle. Gradle builds the app's small, per-player JNI bridge; subsequent builds reuse the downloaded libraries under `build/mpv`.
 
 ```sh
-./gradlew :app:testDebugUnitTest :app:lintDebug :app:assembleDebug :app:assembleRelease
+./gradlew :app:testDebugUnitTest :app:lintDebug :app:lintRelease :app:assembleDebug :app:assembleRelease
 ```
 
-The release APK in Gradle output is unsigned. The local preview is a signed, optimized build for sideloading. It has no embedded server address, credentials, or QA instrumentation.
+The release APK in Gradle output is unsigned. The APK attached to each GitHub prerelease is signed and optimized for sideloading. It has no embedded server address, credentials, or QA instrumentation.
 
 ## Local QA fixture
 
