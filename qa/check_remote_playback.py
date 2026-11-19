@@ -68,6 +68,12 @@ def streams(expected):
     raise AssertionError(state)
 
 
+def screenshot():
+    raw = adb('exec-out', 'screencap')
+    width, height, pixel_format = struct.unpack_from('<III', raw)
+    assert pixel_format == 1, ('Unexpected screenshot pixel format', pixel_format)
+    return width, height, memoryview(raw)[-width * height * 4:]
+
 
 def pictures_visible():
     # Resizing can temporarily precede the next GPU buffer. Require real pixels
@@ -85,10 +91,7 @@ def pictures_visible():
 def check_pictures():
     # Assert pixels, not just the player's "Live" status: detached native surfaces
     # can keep decoding while rendering an entirely black picture.
-    raw = adb('exec-out', 'screencap')
-    width, height, pixel_format = struct.unpack_from('<III', raw)
-    assert pixel_format == 1, ('Unexpected screenshot pixel format', pixel_format)
-    pixels = memoryview(raw)[len(raw) - width * height * 4:]
+    width, height, pixels = screenshot()
     tree = nodes()
     inset = next(n for n in tree if n.get('content-desc') == 'Muted inset')
     left, top, right, bottom = map(int, re.findall(r'\d+', inset.get('bounds')))
@@ -120,10 +123,7 @@ def preview_letterbox():
     left, top, right, bottom = map(int, re.findall(r'\d+', preview.get('bounds')))
     bar = ((bottom - top) - (right - left) * 9 / 16) / 2
     assert bar > 8, 'Fixture needs a letterboxed preview'
-    raw = adb('exec-out', 'screencap')
-    width, height, fmt = struct.unpack_from('<III', raw)
-    assert fmt == 1
-    pixels = memoryview(raw)[len(raw) - width * height * 4:]
+    width, _, pixels = screenshot()
     for y in (int(top + bar / 2), int(bottom - bar / 2)):
         for x in range(left + (right - left) // 4, right - (right - left) // 4, 8):
             rgb = pixels[(y * width + x) * 4:(y * width + x) * 4 + 3]
@@ -259,10 +259,7 @@ def both_live():
 # A marker near the top-right of each source must reach the corresponding
 # displayed corner; this catches a smaller picture surrounded by green padding.
 def video_geometry(aspect):
-    raw = adb('exec-out', 'screencap')
-    width, height, fmt = struct.unpack_from('<III', raw)
-    assert fmt == 1
-    pixels = memoryview(raw)[len(raw) - width * height * 4:]
+    width, height, pixels = screenshot()
     content_w, content_h = min(width, height * aspect), min(height, width / aspect)
     left, top = (width - content_w) / 2, (height - content_h) / 2
     x, y = int(left + content_w * .94), int(top + content_h * .10)
