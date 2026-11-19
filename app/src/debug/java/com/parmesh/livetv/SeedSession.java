@@ -14,6 +14,8 @@ public final class SeedSession extends Instrumentation {
     @Override public void onStart() {
         var context = getTargetContext();
         var file = new java.io.File(context.getFilesDir(), "qa-session.json");
+        Bundle outcome = new Bundle();
+        int result = android.app.Activity.RESULT_OK;
         try (var stream = new FileInputStream(file)) {
             var bytes = new java.io.ByteArrayOutputStream();
             byte[] buffer = new byte[1024];
@@ -24,11 +26,10 @@ public final class SeedSession extends Instrumentation {
             store.save(new Jellyfin.Session(
                     data.getString("base"), data.getString("token"), data.getString("userId"),
                     store.device()));
-            finish(android.app.Activity.RESULT_OK, new Bundle());
         } catch (Exception error) {
-            Bundle outcome = new Bundle();
+            result = android.app.Activity.RESULT_CANCELED;
             outcome.putString("error", error.getClass().getSimpleName());
-            finish(android.app.Activity.RESULT_CANCELED, outcome);
         } finally { file.delete(); }
+        finish(result, outcome);
     }
 }
