@@ -1064,8 +1064,8 @@ public final class MainActivity extends ComponentActivity {
         Button close = button(R.string.close, dialog::dismiss);
         Button retry = button(R.string.retry, null);
         addButton(actions, earlier);
-        addButton(actions, later);
         addButton(actions, now);
+        addButton(actions, later);
         addButton(actions, close);
         dialog.add(actions, 14);
         Future<?>[] request = {null};
@@ -1207,11 +1207,12 @@ public final class MainActivity extends ComponentActivity {
             if (!granted) { toast(getString(R.string.local_network_access)); return; }
             loadCatalog();
         }));
-        dialog.add(refresh, 16);
-        dialog.add(dialog.action(R.string.switch_profile, this::profiles), 8);
-        dialog.add(dialog.action(profile.direct() ? R.string.remove_playlist : R.string.sign_out, this::confirmSignOut), 8);
+        Button switchProfile = dialog.action(R.string.switch_profile, this::profiles);
+        dialog.add(switchProfile, 16);
+        dialog.add(refresh, 8);
         dialog.add(button(R.string.close, dialog::dismiss), 8);
-        dialog.show(refresh);
+        dialog.add(dialog.action(profile.direct() ? R.string.remove_playlist : R.string.sign_out, this::confirmSignOut), 16);
+        dialog.show(switchProfile);
     }
 
     private void confirmSignOut() {

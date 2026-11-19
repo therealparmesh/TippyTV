@@ -22,14 +22,14 @@
     <string name="new_code">Get a new code</string>
     <string name="requesting_code">Requesting a code…</string>
     <string name="waiting_for_approval">Waiting for approval…</string>
-    <string name="code_expired">This code expired. Get a new code to continue.</string>
+    <string name="code_expired">This code has expired. Get a new code to continue.</string>
     <string name="code_unavailable">The code is unavailable. Get a new code or sign in with a password.</string>
     <string name="invalid_credentials">Jellyfin rejected the username or password.</string>
     <string name="quick_connect_disabled">Quick Connect is disabled on this server. You can sign in with a password.</string>
     <string name="connection_failed">Could not reach Jellyfin. Check the server address and network.</string>
     <string name="sign_in_not_saved">Could not save this profile on the TV. Try again.</string>
-    <string name="skip_backward">Back 50 channels</string>
-    <string name="skip_forward">Forward 50 channels</string>
+    <string name="skip_backward">Skip back 50 channels</string>
+    <string name="skip_forward">Skip forward 50 channels</string>
     <string name="channel_actions_hint">← Skip 50 · Hold Select</string>
     <string name="muted_inset">Muted inset</string>
     <string name="search_hint">Channel name or number</string>
@@ -113,7 +113,7 @@
     </plurals>
     <string name="opening">Opening TippyTV…</string>
     <string name="no_live_tv_access">This Jellyfin account does not have access to Live TV.</string>
-    <string name="channels_load_failed">Could not load channels. Check the connection and try again.</string>
+    <string name="channels_load_failed">Could not load channels. Check your connection and try again.</string>
     <string name="favorite_update_failed">Could not save this favorite. Try again.</string>
     <string name="no_server_guide">No guide listings available.</string>
     <string name="guide_unavailable">Guide unavailable. Try again shortly.</string>
@@ -140,7 +140,7 @@
     <string name="profile_name_required">Enter a profile name.</string>
     <string name="playlist_url_required">Enter an HTTP or HTTPS URL.</string>
     <string name="reading_gist">Reading Gist…</string>
-    <string name="gist_read_failed">Could not read Gist files. Check the URL or use a raw link.</string>
+    <string name="gist_read_failed">Could not load the Gist. Check the URL or paste a raw file link.</string>
     <string name="choose_guide_file">Choose guide file</string>
     <string name="choose_playlist_file">Choose playlist file</string>
     <string name="skip_guide">Skip guide</string>

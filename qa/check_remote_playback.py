@@ -179,7 +179,7 @@ request('/qa/guide_failure?enabled=0', {})
 key(23)
 assert any(node.get('text') == 'Morning magazine' for node in nodes()), 'Guide retry did not restore listings'
 key(23)  # Later.
-key(22)
+key(21)
 focused('Now')
 key(23)
 focused('Later')
