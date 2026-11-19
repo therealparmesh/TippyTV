@@ -174,15 +174,22 @@ final class Jellyfin implements TvSource {
         request(url("Sessions/Logout").build(), "POST", null);
     }
 
-    public boolean hasGuide(long time, int hours) throws IOException {
-        JSONObject result = request(url("LiveTv/Programs").addQueryParameter("userId", session.user)
+    private HttpUrl.Builder guideQuery(long time, int hours) {
+        return url("LiveTv/Programs").addQueryParameter("userId", session.user)
                 .addQueryParameter("minEndDate", Instant.ofEpochMilli(time).toString())
                 .addQueryParameter("maxStartDate", Instant.ofEpochMilli(time + hours * 3_600_000L).toString())
-                .addQueryParameter("limit", "1").addQueryParameter("enableImages", "false")
-                .addQueryParameter("enableUserData", "false").addQueryParameter("enableTotalRecordCount", "false")
-                .build(), "GET", null);
-        JSONArray items = result.optJSONArray("Items");
+                .addQueryParameter("enableImages", "false").addQueryParameter("enableUserData", "false")
+                .addQueryParameter("enableTotalRecordCount", "false");
+    }
+
+    private JSONArray guideItems(HttpUrl.Builder query) throws IOException {
+        JSONArray items = request(query.build(), "GET", null).optJSONArray("Items");
         if (items == null) throw new IOException("Jellyfin returned an invalid guide response.");
+        return items;
+    }
+
+    public boolean hasGuide(long time, int hours) throws IOException {
+        JSONArray items = guideItems(guideQuery(time, hours).addQueryParameter("limit", "1"));
         return items.length() != 0;
     }
 
@@ -192,16 +199,10 @@ final class Jellyfin implements TvSource {
         if (ids.isEmpty()) return programs;
         int pageSize = 160;
         for (int start = 0; start < 4 * pageSize; start += pageSize) {
-            JSONObject result = request(url("LiveTv/Programs").addQueryParameter("userId", session.user)
+            JSONArray items = guideItems(guideQuery(time, hours)
                     .addQueryParameter("channelIds", String.join(",", ids))
-                    .addQueryParameter("minEndDate", Instant.ofEpochMilli(time).toString())
-                    .addQueryParameter("maxStartDate", Instant.ofEpochMilli(time + hours * 3_600_000L).toString())
                     .addQueryParameter("sortBy", "StartDate").addQueryParameter("sortOrder", "Ascending")
-                    .addQueryParameter("startIndex", "" + start).addQueryParameter("limit", "" + pageSize)
-                    .addQueryParameter("enableImages", "false").addQueryParameter("enableUserData", "false")
-                    .addQueryParameter("enableTotalRecordCount", "false").build(), "GET", null);
-            JSONArray items = result.optJSONArray("Items");
-            if (items == null) throw new IOException("Jellyfin returned an invalid guide page.");
+                    .addQueryParameter("startIndex", Integer.toString(start)).addQueryParameter("limit", Integer.toString(pageSize)));
             for (int i = 0; i < items.length(); i++) {
                 JSONObject item = items.optJSONObject(i);
                 if (item == null) continue;
