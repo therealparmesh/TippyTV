@@ -20,15 +20,14 @@ public final class SeedSession extends Instrumentation {
             int size;
             while ((size = stream.read(buffer)) != -1) bytes.write(buffer, 0, size);
             var data = new JSONObject(new String(bytes.toByteArray(), java.nio.charset.StandardCharsets.UTF_8));
-            new SessionStore(context).save(new Jellyfin.Session(
+            SessionStore store = new SessionStore(context);
+            store.save(new Jellyfin.Session(
                     data.getString("base"), data.getString("token"), data.getString("userId"),
-                    new SessionStore(context).device()));
-            file.delete();
+                    store.device()));
             finish(android.app.Activity.RESULT_OK, new Bundle());
         } catch (Exception error) {
             Bundle outcome = new Bundle();
             outcome.putString("error", error.getClass().getSimpleName());
-            file.delete();
             finish(android.app.Activity.RESULT_CANCELED, outcome);
         } finally { file.delete(); }
     }
