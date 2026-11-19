@@ -331,6 +331,21 @@ public final class MainActivity extends ComponentActivity {
         shell = vertical();
         shell.setPadding(dp(48), dp(27), dp(48), dp(27));
         root.addView(shell, new FrameLayout.LayoutParams(-1, -1));
+        buildHeader();
+        LinearLayout body = new LinearLayout(this);
+        LinearLayout.LayoutParams content = new LinearLayout.LayoutParams(-1, 0, 1);
+        content.topMargin = dp(8); shell.addView(body, content);
+        LinearLayout browser = buildChannelBrowser(body);
+        buildVideoStage(body, browser);
+        showScreen(root);
+        queryButton.requestFocusFromTouch();
+        updateCount();
+        updateSelection();
+        updatePlayback();
+        loadCatalog();
+    }
+
+    private void buildHeader() {
         LinearLayout header = new LinearLayout(this); header.setGravity(Gravity.CENTER_VERTICAL);
         TextView brand = text(getString(R.string.app_name), 22, TEXT);
         brand.setTypeface(Typeface.create("sans-serif-medium", Typeface.NORMAL));
@@ -347,10 +362,9 @@ public final class MainActivity extends ComponentActivity {
         addButton(header, guideButton);
         addButton(header, button(R.string.server, this::serverDialog));
         shell.addView(scrollBar(header), new LinearLayout.LayoutParams(-1, dp(50)));
+    }
 
-        LinearLayout body = new LinearLayout(this);
-        LinearLayout.LayoutParams content = new LinearLayout.LayoutParams(-1, 0, 1);
-        content.topMargin = dp(8); shell.addView(body, content);
+    private LinearLayout buildChannelBrowser(LinearLayout body) {
         LinearLayout browser = vertical(); browser.setBackground(box(PANEL, EDGE, 12));
         browser.setPadding(dp(2), dp(2), dp(2), dp(2));
         body.addView(browser, new LinearLayout.LayoutParams(0, -1, .42f));
@@ -435,9 +449,10 @@ public final class MainActivity extends ComponentActivity {
         list.addOnScrollListener(new RecyclerView.OnScrollListener() {
             @Override public void onScrolled(RecyclerView view, int dx, int dy) { scheduleGuide(); }
         });
-        queryButton.setNextFocusDownId(list.getId());
-        filterButton.setNextFocusDownId(list.getId());
+        return browser;
+    }
 
+    private void buildVideoStage(LinearLayout body, LinearLayout browser) {
         LinearLayout stage = vertical();
         LinearLayout.LayoutParams stageSize = new LinearLayout.LayoutParams(0, -1, .58f);
         stageSize.leftMargin = dp(12); body.addView(stage, stageSize);
@@ -511,7 +526,11 @@ public final class MainActivity extends ComponentActivity {
             if (compact) size.topMargin = dp(8); else size.leftMargin = dp(12);
             stage.setLayoutParams(size);
         });
+        buildWatchControls();
+        player = new Playback(this, mainSurface, insetSurface, this::updatePlayback, this::swapPictures);
+    }
 
+    private void buildWatchControls() {
         LinearLayout watchBar = new LinearLayout(this); watchBar.setGravity(Gravity.CENTER_VERTICAL);
         watchBar.setBackgroundColor(0xdf282a36); watchBar.setPadding(dp(48), 0, dp(40), dp(27));
         watchTitle = text("", 16, TEXT); watchTitle.setSingleLine(); watchTitle.setEllipsize(TextUtils.TruncateAt.END);
@@ -534,14 +553,6 @@ public final class MainActivity extends ComponentActivity {
         watchOverlay = scrollBar(watchBar);
         video.addView(watchOverlay, bottom);
         watchOverlay.setVisibility(View.GONE);
-
-        player = new Playback(this, mainSurface, insetSurface, this::updatePlayback, this::swapPictures);
-        showScreen(root);
-        queryButton.requestFocusFromTouch();
-        updateCount();
-        updateSelection();
-        updatePlayback();
-        loadCatalog();
     }
 
     private void loadCatalog() {
@@ -564,7 +575,7 @@ public final class MainActivity extends ComponentActivity {
                     for (Channels.Channel c : page.channels()) accumulated.put(c.id(), c);
                     cursor += page.consumed();
                     boolean done = page.consumed() == 0 || (total >= 0 ? cursor >= total : page.consumed() < PAGE);
-                    if (!done && accumulated.size() == priorSize && page.consumed() > 0) {
+                    if (!done && accumulated.size() == priorSize) {
                         throw new java.io.IOException("Channel paging did not advance.");
                     }
                     if (done || (!replace && pages++ % 3 == 0)) {
@@ -572,7 +583,6 @@ public final class MainActivity extends ComponentActivity {
                     }
                     if (done) return;
                 }
-                return;
             } catch (Exception failure) {
                 boolean expired = failure instanceof Jellyfin.HttpFailure http && http.status == 401;
                 String error = failure instanceof Jellyfin.HttpFailure http && http.status == 403
@@ -646,14 +656,14 @@ public final class MainActivity extends ComponentActivity {
                     if (destroyed || generation != visibleGeneration) return;
                     jumps = index;
                     int position = selected == null ? -1 : Channels.indexOf(filtered, selected.id());
+                    int restoredPosition = position >= 0 ? position : Channels.jumpPage(focusedPosition, filtered.size(), 0);
                     if (filtered.isEmpty()) {
                         if (list.hasFocus()) (starred && term.isBlank() ? filterButton : queryButton).requestFocusFromTouch();
                         selected = null; pendingJump = null; focusedPosition = 0;
                     } else if (resetSelection || pendingJump != null || (position < 0 && list.hasFocus())) {
-                        jump(resetSelection ? 0 : position >= 0 ? position
-                                : Channels.jumpPage(focusedPosition, filtered.size(), 0));
+                        jump(resetSelection ? 0 : restoredPosition);
                     } else {
-                        focusedPosition = position >= 0 ? position : Channels.jumpPage(focusedPosition, filtered.size(), 0);
+                        focusedPosition = restoredPosition;
                         selected = filtered.get(focusedPosition);
                     }
                     boolean focusRecovery = resetSelection && filtered.isEmpty();
