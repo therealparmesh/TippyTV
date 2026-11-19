@@ -1,6 +1,6 @@
 # TippyTV
 
-A standalone, Darcula-colored Android TV and Fire OS client for Jellyfin Live TV and HTTP(S) IPTV playlists. It has no movie, show, recording, or library screens. No Google Play Services are required.
+A standalone, Dracula-themed Android TV and Fire OS client for Jellyfin Live TV and HTTP(S) IPTV playlists. It has no movie, show, recording, or library screens. No Google Play Services are required.
 
 ## Use it
 

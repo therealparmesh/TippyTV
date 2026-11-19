@@ -56,9 +56,9 @@ import java.util.concurrent.Future;
 import java.util.function.Consumer;
 
 public final class MainActivity extends ComponentActivity {
-    static final int BG = 0xff252629, PANEL = 0xff303237, EDGE = 0xff45484f;
-    private static final int BAR = 0xff40434a, BLUE = 0xff3d526e;
-    static final int TEXT = 0xffececf0, DIM = 0xffb8bbc5, ACCENT = 0xffffc66d, PRIMARY = 0xff4a576c;
+    static final int BG = 0xff282a36, PANEL = 0xff30323f, EDGE = 0xff565968;
+    private static final int BAR = 0xff44475a, FOCUS = 0xff514965;
+    static final int TEXT = 0xfff8f8f2, DIM = 0xffc8c9d4, ACCENT = 0xffbd93f9, PRIMARY = 0xff49415e;
     private static final int PAGE = 256, GUIDE_BATCH = 16;
     private static final int GUIDE_HOURS = 3, WATCH_BAR_HEIGHT = 81;
     private static final long LOADING_REFRESH_MS = 1_000;
@@ -257,8 +257,8 @@ public final class MainActivity extends ComponentActivity {
     StateListDrawable focusBackground(int normal) {
         StateListDrawable states = new StateListDrawable();
         states.addState(new int[]{-android.R.attr.state_enabled}, box(BG, 0, 5));
-        states.addState(new int[]{android.R.attr.state_focused}, box(BLUE, ACCENT, 5));
-        states.addState(new int[]{android.R.attr.state_pressed}, box(BLUE, ACCENT, 5));
+        states.addState(new int[]{android.R.attr.state_focused}, box(FOCUS, ACCENT, 5));
+        states.addState(new int[]{android.R.attr.state_pressed}, box(FOCUS, ACCENT, 5));
         states.addState(new int[0], box(normal, 0, 5));
         return states;
     }
@@ -513,7 +513,7 @@ public final class MainActivity extends ComponentActivity {
         });
 
         LinearLayout watchBar = new LinearLayout(this); watchBar.setGravity(Gravity.CENTER_VERTICAL);
-        watchBar.setBackgroundColor(0xdf2b2b2b); watchBar.setPadding(dp(48), 0, dp(40), dp(27));
+        watchBar.setBackgroundColor(0xdf282a36); watchBar.setPadding(dp(48), 0, dp(40), dp(27));
         watchTitle = text("", 16, TEXT); watchTitle.setSingleLine(); watchTitle.setEllipsize(TextUtils.TruncateAt.END);
         watchBar.addView(watchTitle, new LinearLayout.LayoutParams(0, -2, 1));
         watchStatus = text("", 14, DIM);
