@@ -54,18 +54,18 @@ final class PlaylistSetup {
     private void choose(String address, boolean guideStep) {
         HttpUrl url = HttpUrl.get(address);
         if (!url.host().equals("gist.github.com") || url.pathSegments().contains("raw")) { selected(address, guideStep); return; }
-        if (address.equals(gistPage)) { pickFile(address, guideStep); return; }
+        if (address.equals(gistPage)) { pickFile(guideStep); return; }
         load(R.string.reading_gist, R.string.gist_read_failed, () -> gistFiles(url), files -> {
             gistPage = address;
             gistFiles = files;
-            pickFile(address, guideStep);
+            pickFile(guideStep);
         });
     }
 
     private static Map<String, String> gistFiles(HttpUrl url) throws Exception {
         List<String> parts = new ArrayList<>(url.pathSegments());
         parts.removeIf(String::isEmpty);
-        if (parts.size() < 1 || parts.size() > 3) throw new IOException();
+        if (parts.isEmpty() || parts.size() > 3) throw new IOException();
         String id = parts.get(parts.size() == 1 ? 0 : 1);
         String revision = parts.size() == 3 ? parts.get(2) : "";
         if (!id.matches("[a-fA-F0-9]+") || !revision.isEmpty() && !revision.matches("[a-fA-F0-9]+")) throw new IOException();
@@ -88,7 +88,7 @@ final class PlaylistSetup {
         return result;
     }
 
-    private void pickFile(String address, boolean guideStep) {
+    private void pickFile(boolean guideStep) {
         TvDialog picker = new TvDialog(activity, guideStep ? activity.getString(R.string.choose_guide_file) : activity.getString(R.string.choose_playlist_file));
         LinearLayout rows = activity.vertical();
         picker.scroll(rows, 190);
@@ -97,7 +97,7 @@ final class PlaylistSetup {
             Button item = picker.action(file.getKey(), () -> {
                 if (!guideStep && guide.isEmpty()) {
                     selectedPlaylist = raw;
-                    pickFile(address, true);
+                    pickFile(true);
                 } else selected(raw, guideStep);
             });
             item.setMinimumHeight(activity.dp(44));
@@ -105,7 +105,7 @@ final class PlaylistSetup {
         }
         if (guideStep) picker.add(picker.action(R.string.skip_guide, () -> selected("", true)), 8);
         picker.onCancel(() -> {
-            if (guideStep && guide.isEmpty()) pickFile(address, false);
+            if (guideStep && guide.isEmpty()) pickFile(false);
             else show();
         });
         picker.show(rows.getChildAt(0));
