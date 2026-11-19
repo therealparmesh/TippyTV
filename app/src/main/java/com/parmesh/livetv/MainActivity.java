@@ -59,7 +59,7 @@ public final class MainActivity extends ComponentActivity {
     static final int BG = 0xff282a36, PANEL = 0xff30323f, EDGE = 0xff565968;
     private static final int BAR = 0xff44475a, FOCUS = 0xff514965;
     static final int TEXT = 0xfff8f8f2, DIM = 0xffc8c9d4, ACCENT = 0xffbd93f9, PRIMARY = 0xff49415e;
-    private static final int PAGE = 256, GUIDE_BATCH = 16;
+    private static final int GUIDE_BATCH = 16;
     private static final int GUIDE_HOURS = 3, WATCH_BAR_HEIGHT = 81;
     private static final long LOADING_REFRESH_MS = 1_000;
     private final Handler ui = new Handler(Looper.getMainLooper());
@@ -568,13 +568,12 @@ public final class MainActivity extends ComponentActivity {
             int cursor = 0, pages = 0;
             try {
                 while (catalogGeneration == generation) {
-                    Jellyfin.Page page = server.channels(cursor, PAGE);
+                    TvSource.Page page = server.channels(cursor);
                     if (catalogGeneration != generation) return;
-                    int total = page.total();
                     int priorSize = accumulated.size();
                     for (Channels.Channel c : page.channels()) accumulated.put(c.id(), c);
-                    cursor += page.consumed();
-                    boolean done = page.consumed() == 0 || (total >= 0 ? cursor >= total : page.consumed() < PAGE);
+                    cursor = page.nextStart();
+                    boolean done = cursor < 0;
                     if (!done && accumulated.size() == priorSize) {
                         throw new java.io.IOException("Channel paging did not advance.");
                     }

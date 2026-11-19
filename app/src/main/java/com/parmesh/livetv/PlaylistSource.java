@@ -25,7 +25,6 @@ final class PlaylistSource implements TvSource {
     private final SharedPreferences stars;
     record Entry(String name, String number, String guide, HttpUrl url) {}
     private volatile Map<String, Entry> entries = Map.of();
-    private List<String> order = List.of();
     private Map<String, List<Channels.Program>> listings = Map.of();
     private Map<String, Entry> guideCatalog;
     private long guideExpires;
@@ -110,18 +109,13 @@ final class PlaylistSource implements TvSource {
     private static String fingerprint(Entry e) {
         return "url:" + UUID.nameUUIDFromBytes((e.name() + "\n" + e.url()).getBytes(StandardCharsets.UTF_8));
     }
-    public synchronized Jellyfin.Page channels(int start, int limit) throws IOException {
-        if (start == 0) {
-            entries = download(profile);
-            order = new ArrayList<>(entries.keySet());
-        }
-        List<Channels.Channel> page = new ArrayList<>();
-        for (int i = start; i < Math.min(order.size(), start + limit); i++) {
-            String key = order.get(i);
-            Entry e = entries.get(key);
-            page.add(new Channels.Channel(key, e.name(), e.number(), e.name().equals(stars.getString(key, null))));
-        }
-        return new Jellyfin.Page(page, page.size(), order.size());
+    public Page channels(int start) throws IOException {
+        Map<String, Entry> loaded = download(profile);
+        List<Channels.Channel> channels = new ArrayList<>(loaded.size());
+        loaded.forEach((id, entry) -> channels.add(new Channels.Channel(id, entry.name(), entry.number(),
+                entry.name().equals(stars.getString(id, null)))));
+        entries = loaded;
+        return new Page(channels, -1);
     }
     public Jellyfin.Stream open(Channels.Channel channel, boolean fallback, boolean inset, boolean recovering) throws IOException {
         Entry e = (recovering ? download(profile) : entries).get(channel.id());

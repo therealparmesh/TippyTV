@@ -6,7 +6,10 @@ import java.util.Map;
 import org.json.JSONException;
 
 interface TvSource {
-    Jellyfin.Page channels(int start, int limit) throws IOException;
+    /** nextStart is -1 when the source has returned its entire lineup. */
+    record Page(List<Channels.Channel> channels, int nextStart) {}
+
+    Page channels(int start) throws IOException;
     void logout() throws IOException;
     void favorite(Channels.Channel channel, boolean value) throws IOException;
     boolean hasGuide(long time, int hours) throws IOException;

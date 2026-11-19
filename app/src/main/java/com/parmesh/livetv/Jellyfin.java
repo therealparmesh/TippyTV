@@ -32,7 +32,6 @@ final class Jellyfin implements TvSource {
         boolean direct() { return !playlist.isEmpty(); }
         String label() { return direct() ? name : name + " · " + server; }
     }
-    record Page(List<Channels.Channel> channels, int consumed, int total) {}
     record Stream(HttpUrl url, String liveId, String playId, boolean compatible) {}
     record QuickConnect(String code, String secret) {}
 
@@ -144,7 +143,8 @@ final class Jellyfin implements TvSource {
         return new Session(base.toString(), token, userId, session.device(), result.getJSONObject("User").optString("Name", userId), "", "");
     }
 
-    public Page channels(int start, int limit) throws IOException {
+    public Page channels(int start) throws IOException {
+        int limit = 256;
         JSONObject result = request(url("LiveTv/Channels").addQueryParameter("userId", session.user)
                 .addQueryParameter("startIndex", "" + start).addQueryParameter("limit", "" + limit)
                 .addQueryParameter("enableImages", "false").addQueryParameter("addCurrentProgram", "false")
@@ -162,7 +162,10 @@ final class Jellyfin implements TvSource {
                     str(item, "ChannelNumber").isBlank() ? str(item, "Number") : str(item, "ChannelNumber"),
                     userData != null && userData.optBoolean("IsFavorite")));
         }
-        return new Page(channels, items.length(), result.optInt("TotalRecordCount", -1));
+        int next = start + items.length();
+        int total = result.optInt("TotalRecordCount", -1);
+        boolean more = items.length() > 0 && (total >= 0 ? next < total : items.length() >= limit);
+        return new Page(channels, more ? next : -1);
     }
 
     public void favorite(Channels.Channel channel, boolean value) throws IOException {
