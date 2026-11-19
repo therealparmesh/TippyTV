@@ -8,6 +8,8 @@ import android.util.Base64;
 import java.nio.charset.StandardCharsets;
 import java.security.KeyStore;
 import java.util.UUID;
+import java.util.List;
+import org.json.JSONArray;
 import javax.crypto.Cipher;
 import javax.crypto.KeyGenerator;
 import javax.crypto.SecretKey;
@@ -31,32 +33,58 @@ final class SessionStore {
     String address() { return prefs.getString("server", ""); }
 
     Jellyfin.Session read() {
+        String active = prefs.getString("active", null);
+        if (active != null) {
+            try {
+                String[] blob = prefs.getString("profile." + active, "").split(":", 2);
+                JSONArray a = new JSONArray(decrypt(blob[0], blob[1]));
+                return new Jellyfin.Session(a.getString(0), a.getString(1), a.getString(2), a.length() > 6 ? a.getString(6) : device(),
+                        a.getString(3), a.getString(4), a.getString(5));
+            } catch (Exception unreadable) { return null; }
+        }
         String token = prefs.getString("token", null);
         if (token == null) return null;
         try {
-            byte[] iv = Base64.decode(prefs.getString("iv", ""), Base64.NO_WRAP);
-            Cipher cipher = Cipher.getInstance("AES/GCM/NoPadding");
-            cipher.init(Cipher.DECRYPT_MODE, key(), new GCMParameterSpec(128, iv));
-            String value = new String(cipher.doFinal(Base64.decode(token, Base64.NO_WRAP)), StandardCharsets.UTF_8);
-            return new Jellyfin.Session(address(), value, prefs.getString("user", ""), device());
-        } catch (Exception unreadable) {
-            clear();
-            return null;
-        }
+            Jellyfin.Session legacy = new Jellyfin.Session(address(), decrypt(prefs.getString("iv", ""), token),
+                    prefs.getString("user", ""), device());
+            save(legacy);
+            return legacy;
+        } catch (Exception unreadable) { return null; }
     }
+
+    private String decrypt(String iv, String data) throws Exception {
+        Cipher cipher = Cipher.getInstance("AES/GCM/NoPadding");
+        cipher.init(Cipher.DECRYPT_MODE, key(), new GCMParameterSpec(128, Base64.decode(iv, Base64.NO_WRAP)));
+        return new String(cipher.doFinal(Base64.decode(data, Base64.NO_WRAP)), StandardCharsets.UTF_8);
+    }
+
+    List<String> ids() {
+        return prefs.getAll().keySet().stream().filter(k -> k.startsWith("profile."))
+                .map(k -> k.substring(8)).sorted(java.util.Comparator.comparing(this::label)).collect(java.util.stream.Collectors.toList());
+    }
+    String label(String id) { return prefs.getString("label." + id, "Profile"); }
+    String activeId() { return prefs.getString("active", ""); }
+    void activate(String id) { prefs.edit().putString("active", id).apply(); }
 
     void save(Jellyfin.Session session) throws Exception {
+        String id = UUID.nameUUIDFromBytes((session.server() + "\n" + session.user()).getBytes(StandardCharsets.UTF_8)).toString();
+        JSONArray a = new JSONArray().put(session.server()).put(session.token()).put(session.user())
+                .put(session.name()).put(session.playlist()).put(session.guide()).put(session.device());
         Cipher cipher = Cipher.getInstance("AES/GCM/NoPadding");
         cipher.init(Cipher.ENCRYPT_MODE, key());
-        byte[] encrypted = cipher.doFinal(session.token().getBytes(StandardCharsets.UTF_8));
-        if (!prefs.edit().putString("server", session.server()).putString("user", session.user())
-                .putString("iv", Base64.encodeToString(cipher.getIV(), Base64.NO_WRAP))
-                .putString("token", Base64.encodeToString(encrypted, Base64.NO_WRAP)).commit()) {
-            throw new java.io.IOException("Could not save sign-in.");
-        }
+        String blob = Base64.encodeToString(cipher.getIV(), Base64.NO_WRAP) + ":" +
+                Base64.encodeToString(cipher.doFinal(a.toString().getBytes(StandardCharsets.UTF_8)), Base64.NO_WRAP);
+        SharedPreferences.Editor edit = prefs.edit().putString("profile." + id, blob)
+                .putString("label." + id, session.label()).putString("active", id)
+                .remove("token").remove("user").remove("iv");
+        if (!session.direct()) edit.putString("server", session.server());
+        if (!edit.commit()) throw new java.io.IOException("Could not save profile.");
     }
-
-    void clear() { prefs.edit().remove("token").remove("iv").remove("user").apply(); }
+    void clear() {
+        String id = prefs.getString("active", "");
+        prefs.edit().remove("profile." + id).remove("label." + id).remove("active")
+                .remove("token").remove("user").remove("iv").apply();
+    }
 
     private SecretKey key() throws Exception {
         KeyStore store = KeyStore.getInstance("AndroidKeyStore");

@@ -1,8 +1,8 @@
 <resources>
-    <string name="network_permission_title">Allow access to Jellyfin</string>
+    <string name="network_permission_title">Allow local network access</string>
     <string name="open_settings">Open settings</string>
     <string name="login_connecting">Connecting…</string>
-    <string name="local_network_access">To reach Jellyfin on your network, open Settings → Permissions → Nearby devices and allow access.</string>
+    <string name="local_network_access">To reach sources on your network, open Settings → Permissions → Nearby devices and allow access.</string>
     <string name="guide_load_failed">Could not load listings. Check your connection and try again.</string>
     <string name="guide_loading">Loading guide…</string>
     <string name="favorite_channel_label">★&#160;&#160;%1$s</string>
@@ -27,7 +27,7 @@
     <string name="invalid_credentials">Jellyfin rejected the username or password.</string>
     <string name="quick_connect_disabled">Quick Connect is disabled on this server. You can sign in with a password.</string>
     <string name="connection_failed">Could not reach Jellyfin. Check the server address and network.</string>
-    <string name="sign_in_not_saved">Signed in. This device could not save the session.</string>
+    <string name="sign_in_not_saved">Could not save this profile on the TV. Try again.</string>
     <string name="skip_backward">Back 50 channels</string>
     <string name="skip_forward">Forward 50 channels</string>
     <string name="channel_actions_hint">← Skip 50 · Hold Select</string>
@@ -47,7 +47,6 @@
     <string name="remove_favorite">Remove favorite</string>
     <string name="add_favorite">Add favorite</string>
     <string name="compatible_stream">Try a compatible stream</string>
-    <string name="jellyfin_server">Jellyfin server</string>
     <string name="refresh_channels">Refresh channels</string>
     <string name="close">Close</string>
     <string name="sign_out">Sign out</string>
@@ -63,16 +62,16 @@
     <string name="now">NOW</string>
     <string name="favorites">Favorites</string>
     <string name="jump">Jump</string>
-    <string name="server">Server</string>
+    <string name="server">Profile</string>
     <string name="all_channels">All channels</string>
-    <string name="search_active">Search •</string>
+    <string name="search_active">Edit search</string>
     <string name="loading_channel_count">%1$s · Loading…</string>
-    <string name="partial_channel_count">%1$s · Partial list</string>
+    <string name="partial_channel_count">%1$s · Refresh needed</string>
     <string name="search_channel_count">%1$s · “%2$s”</string>
     <string name="loading_channels">Loading channels…</string>
     <string name="no_matching_channels">No matches. Try a different name or number.</string>
     <string name="no_favorites">No favorites yet. Add a channel to find it here.</string>
-    <string name="no_channels">Jellyfin has no Live TV channels for this account.</string>
+    <string name="no_channels">No channels available for this profile.</string>
     <string name="no_channel_selected">No channel selected</string>
     <string name="choose_channel">Select a channel to start watching</string>
     <string name="full_screen">Full screen</string>
@@ -81,13 +80,13 @@
     <string name="close_inset">Close inset</string>
     <string name="retry">Try again</string>
     <string name="retry_inset">Retry inset</string>
-    <string name="tuning">Requesting stream from Jellyfin…</string>
+    <string name="tuning">Opening channel…</string>
     <string name="trying_compatible">Requesting a compatible stream…</string>
     <string name="preparing_playback">Preparing player…</string>
     <string name="waiting_video">Waiting for video…</string>
     <string name="buffering">Buffering video…</string>
     <string name="waiting_reconnect">Stream interrupted. Waiting to retry…</string>
-    <string name="reconnecting">Reconnecting to Jellyfin…</string>
+    <string name="reconnecting">Reconnecting…</string>
     <string name="loading_elapsed">%1$s\n%2$d s elapsed</string>
     <string name="buffering_detail">Buffering video…\n%1$.1f s buffered · %2$d s elapsed</string>
     <string name="retry_countdown">Stream interrupted.\nRetrying in %1$.1f s</string>
@@ -114,9 +113,9 @@
     </plurals>
     <string name="opening">Opening TippyTV…</string>
     <string name="no_live_tv_access">This Jellyfin account does not have access to Live TV.</string>
-    <string name="channels_load_failed">Could not load channels. Open Server and choose Refresh channels.</string>
+    <string name="channels_load_failed">Could not load channels. Check the connection and try again.</string>
     <string name="favorite_update_failed">Could not save this favorite. Try again.</string>
-    <string name="no_server_guide">Jellyfin hasn’t provided guide listings.</string>
+    <string name="no_server_guide">No guide listings available.</string>
     <string name="guide_unavailable">Guide unavailable. Try again shortly.</string>
     <string name="guide_now">Now · %1$s</string>
     <string name="guide_next">Next at %1$s · %2$s</string>
@@ -124,4 +123,27 @@
     <string name="signed_out_locally">Signed out on this TV. Jellyfin could not end the server session.</string>
     <string name="signing_out">Signing out…</string>
     <string name="sign_in_expired">Your sign-in expired. Sign in again to continue.</string>
+    <string name="switch_profile">Switch profile</string>
+    <string name="current_profile">Current · %1$s</string>
+    <string name="removing_playlist">Removing playlist…</string>
+    <string name="playlist_removed">Playlist removed from this TV.</string>
+    <string name="profiles">Profiles</string>
+    <string name="add_account">Add Jellyfin account</string>
+    <string name="add_playlist">Add playlist</string>
+    <string name="remove_playlist">Remove playlist</string>
+    <string name="remove_playlist_title">Remove playlist?</string>
+    <string name="remove_playlist_detail">“%1$s” and its favorites will be removed from this TV.</string>
+    <string name="profile_name">Profile name</string>
+    <string name="playlist_url">Playlist URL or Gist</string>
+    <string name="playlist_guide_url">Guide URL or Gist (optional)</string>
+    <string name="profile_continue">Continue</string>
+    <string name="profile_name_required">Enter a profile name.</string>
+    <string name="playlist_url_required">Enter an HTTP or HTTPS URL.</string>
+    <string name="reading_gist">Reading Gist…</string>
+    <string name="gist_read_failed">Could not read Gist files. Check the URL or use a raw link.</string>
+    <string name="choose_guide_file">Choose guide file</string>
+    <string name="choose_playlist_file">Choose playlist file</string>
+    <string name="skip_guide">Skip guide</string>
+    <string name="checking_playlist">Checking playlist…</string>
+    <string name="playlist_read_failed">Could not load channels. Check the playlist URL or selected file.</string>
 </resources>

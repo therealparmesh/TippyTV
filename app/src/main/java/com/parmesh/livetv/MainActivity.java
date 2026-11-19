@@ -68,7 +68,7 @@ public final class MainActivity extends ComponentActivity {
     private final ExecutorService search = Executors.newSingleThreadExecutor();
     private final ExecutorService guide = Executors.newSingleThreadExecutor();
     private final GuideCache epg = new GuideCache(384);
-    private record FavoriteEdit(boolean value, long revision) {}
+    private record FavoriteEdit(String name, boolean value, long revision) {}
     private final Map<String, FavoriteEdit> favoriteOverrides = new HashMap<>();
     private long favoriteRevision;
     private final Set<String> pendingFavorites = new HashSet<>();
@@ -76,7 +76,8 @@ public final class MainActivity extends ComponentActivity {
     private final DateFormat guideDate = DateFormat.getDateInstance(DateFormat.MEDIUM);
     private SessionStore store;
     private SignInScreen signIn;
-    private Jellyfin api;
+    private TvSource api;
+    private Jellyfin.Session profile;
     private Playback player;
     private List<Channels.Channel> all = List.of();
     private Set<String> favorites = Set.of();
@@ -162,7 +163,7 @@ public final class MainActivity extends ComponentActivity {
             Jellyfin.Session saved = store.read();
             ui.post(() -> {
                 if (destroyed) return;
-                if (saved == null) showLogin("");
+                if (saved == null || getIntent().getBooleanExtra("addAccount", false)) showLogin("");
                 else requestLocalNetwork(granted -> {
                     if (granted) connected(saved);
                     else showLogin(getString(R.string.local_network_access));
@@ -288,12 +289,12 @@ public final class MainActivity extends ComponentActivity {
     }
 
     private void showLogin(String message) {
-        if (signIn == null) signIn = new SignInScreen(this, accounts, store.device(), store.address());
+        if (signIn == null) signIn = new SignInScreen(this, accounts, java.util.UUID.randomUUID().toString(), store.address());
         signIn.show(message, signingOut);
     }
 
     void signedIn(Jellyfin.Session session) {
-        signIn.cancel();
+        if (signIn != null) signIn.cancel();
         signIn = null;
         accounts.execute(() -> {
             boolean persisted;
@@ -302,8 +303,13 @@ public final class MainActivity extends ComponentActivity {
             boolean saved = persisted;
             ui.post(() -> {
                 if (destroyed) return;
-                connected(session);
-                if (!saved) toast(getString(R.string.sign_in_not_saved));
+                if (!saved) {
+                    if (api == null) showLogin(getString(R.string.sign_in_not_saved));
+                    else toast(getString(R.string.sign_in_not_saved));
+                    return;
+                }
+                getIntent().removeExtra("addAccount");
+                if (api == null) connected(session); else recreate();
             });
         });
     }
@@ -319,7 +325,8 @@ public final class MainActivity extends ComponentActivity {
     }
 
     private void connected(Jellyfin.Session session) {
-        api = new Jellyfin(session);
+        profile = session;
+        api = session.direct() ? new PlaylistSource(this, session) : new Jellyfin(session);
         root = new FrameLayout(this); root.setBackgroundColor(BG);
         shell = vertical();
         shell.setPadding(dp(48), dp(27), dp(48), dp(27));
@@ -335,7 +342,7 @@ public final class MainActivity extends ComponentActivity {
             favoritesOnly = !favoritesOnly; renderFilter(true);
         }); addButton(header, filterButton);
         jumpButton = button(R.string.jump, this::jumpDialog);
-        guideButton = button(R.string.guide, this::scheduleDialog);
+        guideButton = button(R.string.guide, () -> scheduleDialog(selected));
         addButton(header, jumpButton);
         addButton(header, guideButton);
         addButton(header, button(R.string.server, this::serverDialog));
@@ -443,7 +450,7 @@ public final class MainActivity extends ComponentActivity {
         video.setOnClickListener(view -> {
             if (fullscreen) showWatchControls();
             else if (player.primary() != null || selected != null) {
-                if (player.primary() == null) tune(false);
+                if (player.primary() == null) tune(selected, false);
                 setFullscreen(true);
             }
         });
@@ -462,7 +469,6 @@ public final class MainActivity extends ComponentActivity {
         root.addOnLayoutChangeListener((v, l, t, r, b, ol, ot, or, ob) -> layoutVideo());
         previewSlot.addOnLayoutChangeListener((v, l, t, r, b, ol, ot, or, ob) -> layoutVideo());
         MpvView mainSurface = new MpvView(this);
-        mainSurface.setFocusable(false);
         mainPicture = new FrameLayout(this);
         video.addView(mainPicture, new FrameLayout.LayoutParams(-1, -1));
         mainPicture.addView(mainSurface, new FrameLayout.LayoutParams(-1, -1));
@@ -482,7 +488,6 @@ public final class MainActivity extends ComponentActivity {
         inset.setContentDescription(getString(R.string.muted_inset));
         inset.setPadding(dp(2), dp(2), dp(2), dp(2));
         MpvView insetSurface = new MpvView(this);
-        insetSurface.setFocusable(false);
         inset.addView(insetSurface, new FrameLayout.LayoutParams(-1, -1));
         insetMessage = text("", 14, TEXT); insetMessage.setGravity(Gravity.CENTER);
         inset.addView(insetMessage, new FrameLayout.LayoutParams(-1, -1));
@@ -541,7 +546,7 @@ public final class MainActivity extends ComponentActivity {
 
     private void loadCatalog() {
         if (api == null || catalogBusy) return;
-        Jellyfin server = api;
+        TvSource server = api;
         long generation = ++catalogGeneration;
         long favoriteBaseline = favoriteRevision;
         boolean replace = !all.isEmpty();
@@ -588,7 +593,7 @@ public final class MainActivity extends ComponentActivity {
         });
     }
 
-    private void publishCatalog(Jellyfin server, long generation, long favoriteBaseline, Map<String, Channels.Channel> channels,
+    private void publishCatalog(TvSource server, long generation, long favoriteBaseline, Map<String, Channels.Channel> channels,
                                 boolean done, String error) {
         List<Channels.Channel> snapshot = List.copyOf(channels.values());
         ui.post(() -> {
@@ -596,6 +601,9 @@ public final class MainActivity extends ComponentActivity {
             all = snapshot;
             catalogBusy = !done; loadProblem = error;
             if (done && error == null) {
+                ++guideGeneration;
+                epg.clear();
+                noGuideUntil = guideCheckedUntil = guideBackoffUntil = 0;
                 favoriteOverrides.values().removeIf(edit -> edit.revision() <= favoriteBaseline);
                 player.reconcileChannels(snapshot);
                 if (resumeMain != null && Channels.indexOf(snapshot, resumeMain.id()) < 0) {
@@ -614,7 +622,7 @@ public final class MainActivity extends ComponentActivity {
         HashSet<String> set = new HashSet<>();
         for (Channels.Channel c : all) {
             FavoriteEdit edit = favoriteOverrides.get(c.id());
-            if (edit == null ? c.favorite() : edit.value()) set.add(c.id());
+            if (edit == null || !edit.name().equals(c.name()) ? c.favorite() : edit.value()) set.add(c.id());
         }
         favorites = Set.copyOf(set);
     }
@@ -776,22 +784,20 @@ public final class MainActivity extends ComponentActivity {
 
     }
 
-    private void favoriteSelected() {
-        if (selected == null || api == null) return;
-        Channels.Channel channel = selected;
-        Jellyfin server = api;
+    private void setFavorite(Channels.Channel channel, boolean value) {
+        if (api == null) return;
+        TvSource server = api;
         if (!pendingFavorites.add(channel.id())) return;
-        boolean value = !favorites.contains(channel.id());
         accounts.execute(() -> {
             boolean ok;
-            try { server.favorite(channel.id(), value); ok = true; }
+            try { server.favorite(channel, value); ok = true; }
             catch (Exception failure) { ok = false; }
             boolean saved = ok;
             ui.post(() -> {
                 if (destroyed || api != server) return;
                 pendingFavorites.remove(channel.id());
                 if (saved) {
-                    favoriteOverrides.put(channel.id(), new FavoriteEdit(value, ++favoriteRevision));
+                    favoriteOverrides.put(channel.id(), new FavoriteEdit(channel.name(), value, ++favoriteRevision));
                     rebuildFavorites();
                     if (favoritesOnly) renderFilter(false);
                     else refreshGuideRows();
@@ -806,26 +812,29 @@ public final class MainActivity extends ComponentActivity {
         selected = channel;
         updateSelection();
         TvDialog dialog = new TvDialog(this, channel.label());
-        Button watch = dialog.action(R.string.play_channel, () -> tune(false));
+        Button watch = dialog.action(R.string.play_channel, () -> tune(channel, false));
         dialog.add(watch, 16);
         if (player.primary() != null && !player.primary().id().equals(channel.id())) {
             Channels.Channel insetChannel = player.secondary();
             boolean inInset = insetChannel != null && insetChannel.id().equals(channel.id());
             if (!inInset || player.secondaryStatus().failed()) {
-                dialog.add(dialog.action(inInset ? R.string.retry_inset : R.string.play_in_inset, () -> tune(true)), 8);
+                dialog.add(dialog.action(inInset ? R.string.retry_inset : R.string.play_in_inset, () -> tune(channel, true)), 8);
             }
         }
-        dialog.add(dialog.action(R.string.guide, this::scheduleDialog), 8);
-        dialog.add(dialog.action(favorites.contains(channel.id()) ? R.string.remove_favorite : R.string.add_favorite,
-                this::favoriteSelected), 8);
-        dialog.add(dialog.action(R.string.compatible_stream, () -> player.tuneCompatible(api, channel)), 8);
+        dialog.add(dialog.action(R.string.guide, () -> scheduleDialog(channel)), 8);
+        boolean starred = favorites.contains(channel.id());
+        Button favorite = dialog.action(starred ? R.string.remove_favorite : R.string.add_favorite,
+                () -> setFavorite(channel, !starred));
+        favorite.setEnabled(!pendingFavorites.contains(channel.id()));
+        dialog.add(favorite, 8);
+        if (!profile.direct()) dialog.add(dialog.action(R.string.compatible_stream, () -> player.tuneCompatible(api, channel)), 8);
         dialog.show(watch);
     }
 
-    private void tune(boolean small) {
-        if (selected == null || api == null) return;
+    private void tune(Channels.Channel channel, boolean small) {
+        if (channel == null || api == null) return;
         if (small && player.primary() == null) small = false;
-        player.tune(api, selected, small);
+        player.tune(api, channel, small);
     }
 
     private void updatePlaybackDetails() {
@@ -979,7 +988,7 @@ public final class MainActivity extends ComponentActivity {
         if (ids.isEmpty()) return;
         boolean probe = elapsed >= guideCheckedUntil;
         int generation = guideGeneration;
-        Jellyfin server = api;
+        TvSource server = api;
         guideBusy = true;
         guide.execute(() -> {
             try {
@@ -1036,10 +1045,9 @@ public final class MainActivity extends ComponentActivity {
         return getString(R.string.guide_next, clock.format(new Date(program.start())), program.title());
     }
 
-    private void scheduleDialog() {
-        if (selected == null || api == null) return;
-        Channels.Channel channel = selected;
-        Jellyfin server = api;
+    private void scheduleDialog(Channels.Channel channel) {
+        if (channel == null || api == null) return;
+        TvSource server = api;
         long initial = GuideCache.window(System.currentTimeMillis());
         long step = GUIDE_HOURS * 3_600_000L;
         long limit = initial + 7 * 86_400_000L;
@@ -1159,33 +1167,60 @@ public final class MainActivity extends ComponentActivity {
         entries.addView(text(getString(message), 17, DIM));
     }
 
+    void profiles() {
+        TvDialog dialog = new TvDialog(this, getString(R.string.profiles));
+        LinearLayout rows = vertical();
+        View initial = null;
+        String active = api == null ? "" : store.activeId();
+        for (String id : store.ids()) {
+            boolean current = id.equals(active);
+            String label = store.label(id);
+            Button item = dialog.action(current ? getString(R.string.current_profile, label) : label, () -> {
+                if (current) return;
+                store.activate(id);
+                getIntent().removeExtra("addAccount");
+                recreate();
+            });
+            item.setMinimumHeight(dp(44));
+            rows.addView(item);
+            if (current || initial == null) initial = item;
+        }
+        if (initial != null) dialog.scroll(rows, Math.min(185, rows.getChildCount() * 44 + 16));
+        Button add = dialog.action(R.string.add_account, () -> { getIntent().putExtra("addAccount", true); recreate(); });
+        dialog.add(add, 8);
+        dialog.add(dialog.action(R.string.add_playlist, this::playlistSetup), 8);
+        dialog.show(initial == null ? add : initial);
+    }
+
+    void playlistSetup() {
+        new PlaylistSetup(this, accounts).show();
+    }
+
     private void serverDialog() {
         if (api == null) return;
-        TvDialog dialog = new TvDialog(this, getString(R.string.jellyfin_server));
-        TextView address = text(api.session.server(), 17, DIM);
+        TvDialog dialog = new TvDialog(this, getString(R.string.server));
+        TextView address = text(profile.label(), 17, DIM);
         address.setSingleLine();
         address.setEllipsize(TextUtils.TruncateAt.MIDDLE);
         dialog.add(address, 8);
         Button refresh = dialog.action(R.string.refresh_channels, () -> requestLocalNetwork(granted -> {
             if (!granted) { toast(getString(R.string.local_network_access)); return; }
-            ++guideGeneration;
-            epg.clear(); noGuideUntil = guideCheckedUntil = guideBackoffUntil = 0;
-            refreshGuideRows(); scheduleGuide();
             loadCatalog();
         }));
         dialog.add(refresh, 16);
-        dialog.add(dialog.action(R.string.sign_out, this::confirmSignOut), 8);
+        dialog.add(dialog.action(R.string.switch_profile, this::profiles), 8);
+        dialog.add(dialog.action(profile.direct() ? R.string.remove_playlist : R.string.sign_out, this::confirmSignOut), 8);
         dialog.add(button(R.string.close, dialog::dismiss), 8);
         dialog.show(refresh);
     }
 
     private void confirmSignOut() {
-        TvDialog dialog = new TvDialog(this, getString(R.string.sign_out_title));
-        dialog.add(text(getString(R.string.sign_out_description), 17, DIM), 8);
+        TvDialog dialog = new TvDialog(this, getString(profile.direct() ? R.string.remove_playlist_title : R.string.sign_out_title));
+        dialog.add(text(profile.direct() ? getString(R.string.remove_playlist_detail, profile.name()) : getString(R.string.sign_out_description), 17, DIM), 8);
         LinearLayout actions = new LinearLayout(this);
-        Button cancel = button(R.string.stay_signed_in, dialog::dismiss);
+        Button cancel = button(profile.direct() ? R.string.cancel : R.string.stay_signed_in, dialog::dismiss);
         addButton(actions, cancel);
-        Button signOut = dialog.action(R.string.sign_out, () -> signOut(true));
+        Button signOut = dialog.action(profile.direct() ? R.string.remove_playlist : R.string.sign_out, () -> signOut(true));
         addButton(actions, signOut);
         dialog.add(actions, 16);
         dialog.show(cancel);
@@ -1193,13 +1228,13 @@ public final class MainActivity extends ComponentActivity {
 
     private void signOut(boolean revoke) {
         ++catalogGeneration; ++visibleGeneration;
-        Jellyfin server = api;
+        TvSource server = api;
         signingOut = revoke;
         player.destroy(revoke ? () -> {
             String message;
             try {
                 server.logout();
-                message = getString(R.string.signed_out);
+                message = getString(server instanceof PlaylistSource ? R.string.playlist_removed : R.string.signed_out);
             } catch (java.io.IOException failure) {
                 message = getString(failure instanceof Jellyfin.HttpFailure http && http.status == 401
                         ? R.string.signed_out : R.string.signed_out_locally);
@@ -1218,7 +1253,8 @@ public final class MainActivity extends ComponentActivity {
         ++guideGeneration;
         noGuideUntil = guideCheckedUntil = guideBackoffUntil = 0;
         epg.clear(); store.clear();
-        showLogin(getString(revoke ? R.string.signing_out : R.string.sign_in_expired));
+        int pending = profile.direct() ? R.string.removing_playlist : R.string.signing_out;
+        showLogin(getString(revoke ? pending : R.string.sign_in_expired));
     }
 
     private void toast(String message) { Toast.makeText(this, message, Toast.LENGTH_SHORT).show(); }
@@ -1261,6 +1297,7 @@ public final class MainActivity extends ComponentActivity {
     }
 
     private boolean handleWatchKey(KeyEvent event) {
+        if (signIn != null) return false;
         if (handleMediaKey(event)) return true;
         int key = event.getKeyCode();
         if (key == revealKey) {
@@ -1307,6 +1344,7 @@ public final class MainActivity extends ComponentActivity {
     }
 
     private boolean handleRemoteKey(KeyEvent event) {
+        if (signIn != null) return false;
         if (handleMediaKey(event)) return true;
         if (event.getAction() == KeyEvent.ACTION_DOWN && api != null && !fullscreen) {
             int key = event.getKeyCode();
@@ -1320,7 +1358,7 @@ public final class MainActivity extends ComponentActivity {
                 if (selected != null) channelActions(selected); else jumpDialog();
                 return true;
             }
-            if (key == KeyEvent.KEYCODE_GUIDE) { scheduleDialog(); return true; }
+            if (key == KeyEvent.KEYCODE_GUIDE) { scheduleDialog(selected); return true; }
             if (key == KeyEvent.KEYCODE_SEARCH) { searchDialog(); return true; }
         }
         return false;
@@ -1328,6 +1366,9 @@ public final class MainActivity extends ComponentActivity {
 
     private void back() {
         if (signIn != null && signIn.back()) return;
+        if (getIntent().getBooleanExtra("addAccount", false)) {
+            getIntent().removeExtra("addAccount"); recreate(); return;
+        }
         if (fullscreen) { setFullscreen(false); return; }
         if (!query.isBlank()) { applySearch(""); return; }
         if (favoritesOnly) { favoritesOnly = false; renderFilter(true); return; }
@@ -1364,7 +1405,7 @@ public final class MainActivity extends ComponentActivity {
                     pendingJump = null;
                     focusedPosition = p; selected = getItem(p); updateSelection();
                     if (isPlayingSelection() && !player.primaryStatus().failed()) setFullscreen(true);
-                    else tune(false);
+                    else tune(selected, false);
                 }
             });
             row.setOnLongClickListener(v -> {

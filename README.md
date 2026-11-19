@@ -1,6 +1,6 @@
 # TippyTV
 
-A standalone, Darcula-colored Android TV and Fire OS client for Jellyfin Live TV. It has no movie, show, recording, or library screens. No Google Play Services are required.
+A standalone, Darcula-colored Android TV and Fire OS client for Jellyfin Live TV and HTTP(S) IPTV playlists. It has no movie, show, recording, or library screens. No Google Play Services are required.
 
 ## Use it
 
@@ -8,10 +8,12 @@ A standalone, Darcula-colored Android TV and Fire OS client for Jellyfin Live TV
 2. Open **TippyTV** and enter your server address. A `.local` hostname works when the server advertises it over multicast DNS on your LAN. Choose **Quick Connect** to approve the TV from Jellyfin on a phone or browser, or choose **Use a password**. The app stores the session token with Android Keystore protection.
 3. Press Select on a channel to play it. Select the playing channel again to enter full screen, or press Right to focus the video preview and press Select. **Back** returns to the selected channel. Full-screen controls start hidden. Press a direction or Select to show them; they hide after five seconds of playback. Use Play/Pause on the remote or **Pause** in full screen to pause the main picture; **Resume live** returns to the live edge.
 4. Hold **Select** on another channel, then choose **Play in inset**. The muted inset occupies one-eighth of the playback area in the bottom-right corner and moves above the controls while they are visible. **Swap** moves audio and the large picture to the other channel. **Close inset** releases the second tuner.
-5. **Search** accepts names and channel numbers. **Favorites** uses Jellyfin favorites. **Jump** goes to a letter or to the first or last channel. Press Left from any channel to reach **−50** and **+50**. Press Up to return to the selected channel. Page, channel, and fast-forward or rewind buttons also skip 50 channels where supported.
+5. **Search** accepts names and channel numbers. **Favorites** uses the active Jellyfin account or stores favorites locally for a playlist. **Jump** goes to a letter or to the first or last channel. Press Left from any channel to reach **−50** and **+50**. Press Up to return to the selected channel. Page, channel, and fast-forward or rewind buttons also skip 50 channels where supported.
 6. **Guide** shows the selected channel’s schedule. **Earlier** and **Later** step through three-hour windows. **Now** returns to current listings.
 
-Live streams use Jellyfin’s negotiated HLS endpoint instead of bypassing the server with provider URLs. The normal profile allows video/audio stream copy; Jellyfin decides whether the source needs conversion. Closing either picture stops its server remux/encoding job and live-TV lease.
+Open **Profile → Switch profile** to switch accounts or add a playlist. Startup opens the last selected profile. A playlist profile takes a name, an M3U URL, and an optional XMLTV guide URL. Paste a Gist page to choose a playlist file and then a guide file, or choose **Skip guide**. Raw URLs work directly. Guide entries match the playlist’s `tvg-id` to the XMLTV channel ID. Both pictures use the active profile. Direct playlists play on the TV and require a supported stream format.
+
+Jellyfin streams use Jellyfin’s negotiated HLS endpoint instead of bypassing the server with provider URLs. The normal profile allows video/audio stream copy; Jellyfin decides whether the source needs conversion. Closing either picture stops its server remux/encoding job and live-TV lease.
 
 Playback uses **mpv only**, with an independent libmpv instance for each picture. Video is decoded directly into an Android surface, avoiding GPU image-reader and copied-decoder buffers that can produce green padding on TV hardware. Each video surface is sized to the picture’s aspect ratio; the surrounding container draws the letterbox bars without transforming the texture. Use **Try compatible stream** if the device cannot decode a channel. The initial/rebuffer target is 2.5 seconds; read-ahead targets five seconds and is capped at 16 MiB per picture. There is no disk media cache. FFmpeg retries transient network and HTTP 5xx failures with bounded backoff before app-level session recovery. Swapping changes the pictures' bounds and audio volume without replacing their native rendering surfaces.
 

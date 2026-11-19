@@ -60,6 +60,7 @@ final class TvDialog {
         });
     }
 
+    void onCancel(Runnable action) { dialog.setOnCancelListener(unused -> action.run()); }
     void onDismiss(Runnable action) { onDismiss = action; }
     void dismiss() { dialog.dismiss(); }
     boolean isShowing() { return dialog.isShowing(); }

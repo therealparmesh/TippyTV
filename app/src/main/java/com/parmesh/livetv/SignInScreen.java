@@ -55,6 +55,7 @@ final class SignInScreen {
         address.setImeOptions(EditorInfo.IME_ACTION_NEXT | EditorInfo.IME_FLAG_NO_EXTRACT_UI);
         Button quick = action(R.string.quick_connect, true, null);
         Button password = action(R.string.use_password, false, null);
+        action(R.string.profiles, false, activity::profiles).setEnabled(!signingOut);
         address.setOnEditorActionListener((view, action, event) -> {
             if (action != EditorInfo.IME_ACTION_NEXT || !quick.isEnabled()) return false;
             if (rememberAddress(address)) quick.requestFocus();

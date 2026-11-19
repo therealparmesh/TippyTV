@@ -45,7 +45,7 @@ final class Playback {
     private final class Slot {
         final ExecutorService tuner = Executors.newSingleThreadExecutor();
         volatile long generation;
-        Jellyfin api;
+        TvSource api;
         Jellyfin.Stream stream;
         volatile MpvPlayer player;
         Channels.Channel channel;
@@ -145,11 +145,11 @@ final class Playback {
         return (primary.active() && primary.playWhenReady) || (secondary.active() && secondary.playWhenReady);
     }
 
-    void tune(Jellyfin api, Channels.Channel channel, boolean inset) {
+    void tune(TvSource api, Channels.Channel channel, boolean inset) {
         tune(api, channel, inset, false);
     }
 
-    void tune(Jellyfin api, Channels.Channel channel, boolean inset, boolean paused) {
+    void tune(TvSource api, Channels.Channel channel, boolean inset, boolean paused) {
         Slot target = inset ? secondary : primary;
         Slot other = inset ? primary : secondary;
         if (other.channel != null && other.channel.id().equals(channel.id())) {
@@ -169,23 +169,23 @@ final class Playback {
         request(target, api, channel, false);
     }
 
-    void tuneCompatible(Jellyfin api, Channels.Channel channel) {
+    void tuneCompatible(TvSource api, Channels.Channel channel) {
         if (secondary.channel != null && secondary.channel.id().equals(channel.id())) stop(secondary);
         resumeOnFocusGain = false;
         primary.playWhenReady = true;
         request(primary, api, channel, true);
     }
 
-    private void request(Slot slot, Jellyfin api, Channels.Channel channel, boolean fallback) {
+    private void request(Slot slot, TvSource api, Channels.Channel channel, boolean fallback) {
         request(slot, api, channel, fallback, false);
     }
 
-    private void request(Slot slot, Jellyfin api, Channels.Channel channel, boolean fallback, boolean recovering) {
+    private void request(Slot slot, TvSource api, Channels.Channel channel, boolean fallback, boolean recovering) {
         long generation = ++slot.generation;
         slot.statusSince = SystemClock.elapsedRealtime();
         if (!recovering) slot.reconnectDelay = 0;
         Jellyfin.Stream old = detach(slot);
-        Jellyfin previousApi = slot.api;
+        TvSource previousApi = slot.api;
         slot.api = api;
         slot.channel = channel;
         slot.fallback = fallback;
@@ -197,7 +197,7 @@ final class Playback {
             if (slot.generation != generation) return;
             Jellyfin.Stream opened;
             try {
-                opened = api.open(channel.id(), fallback, small);
+                opened = api.open(channel, fallback, small, recovering);
             } catch (Exception error) {
                 ui.post(() -> {
                     if (slot.generation != generation) return;
@@ -323,7 +323,7 @@ final class Playback {
     private void finishWithError(Slot slot, Status status) {
         ++slot.generation;
         Jellyfin.Stream old = detach(slot);
-        Jellyfin api = slot.api;
+        TvSource api = slot.api;
         if (old != null) slot.tuner.execute(() -> api.close(old));
         slot.status = status;
         changed.run();
@@ -375,7 +375,7 @@ final class Playback {
     private void stop(Slot slot) {
         ++slot.generation;
         Jellyfin.Stream stream = detach(slot);
-        Jellyfin api = slot.api;
+        TvSource api = slot.api;
         slot.channel = null;
         slot.status = Status.IDLE;
         if (stream != null) slot.tuner.execute(() -> api.close(stream));
@@ -393,14 +393,19 @@ final class Playback {
         if (primary.channel == null && secondary.channel == null) return;
         reconcile(primary, channels);
         reconcile(secondary, channels);
-        if (primary.channel == null && secondary.channel != null) swap();
-        else changed.run();
+        if (primary.channel != null) changed.run();
+        else if (secondary.channel != null) swap();
+        else {
+            resumeOnFocusGain = false;
+            AudioManagerCompat.abandonAudioFocusRequest(audio, audioFocus);
+            changed.run();
+        }
     }
 
     private void reconcile(Slot slot, List<Channels.Channel> channels) {
         if (slot.channel == null) return;
         int position = Channels.indexOf(channels, slot.channel.id());
-        if (position < 0) stop(slot);
+        if (position < 0 || slot.api instanceof PlaylistSource && !slot.channel.name().equals(channels.get(position).name())) stop(slot);
         else slot.channel = channels.get(position);
     }
 

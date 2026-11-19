@@ -17,7 +17,7 @@ import okhttp3.Request;
 import okhttp3.RequestBody;
 import okhttp3.Response;
 
-final class Jellyfin {
+final class Jellyfin implements TvSource {
     private static final MediaType JSON = MediaType.get("application/json");
     private static final RequestBody EMPTY = RequestBody.create(new byte[0], null);
     private static final OkHttpClient HTTP = new OkHttpClient.Builder()
@@ -25,7 +25,13 @@ final class Jellyfin {
             .connectTimeout(6, TimeUnit.SECONDS).readTimeout(15, TimeUnit.SECONDS)
             .callTimeout(24, TimeUnit.SECONDS).followRedirects(false).followSslRedirects(false).build();
 
-    record Session(String server, String token, String user, String device) {}
+    record Session(String server, String token, String user, String device, String name, String playlist, String guide) {
+        Session(String server, String token, String user, String device) {
+            this(server, token, user, device, user, "", "");
+        }
+        boolean direct() { return !playlist.isEmpty(); }
+        String label() { return direct() ? name : name + " · " + server; }
+    }
     record Page(List<Channels.Channel> channels, int consumed, int total) {}
     record Stream(HttpUrl url, String liveId, String playId, boolean compatible) {}
     record QuickConnect(String code, String secret) {}
@@ -79,6 +85,10 @@ final class Jellyfin {
         if (sameOrigin(base, endpoint)) {
             endpoint = endpoint.newBuilder().setQueryParameter("api_key", session.token).build();
         }
+        return nativePlaybackUrl(endpoint);
+    }
+
+    static HttpUrl nativePlaybackUrl(HttpUrl endpoint) throws IOException {
         // Native playback uses platform DNS. Resolve HTTP .local hosts through our mDNS
         // resolver; keep HTTPS hostnames intact for certificate verification.
         if (endpoint.scheme().equals("http") && endpoint.host().endsWith(".local")) {
@@ -131,10 +141,10 @@ final class Jellyfin {
         String token = result.getString("AccessToken");
         String userId = result.getJSONObject("User").getString("Id");
         if (token.isBlank() || userId.isBlank()) throw new IOException("Jellyfin returned an incomplete sign-in.");
-        return new Session(base.toString(), token, userId, session.device());
+        return new Session(base.toString(), token, userId, session.device(), result.getJSONObject("User").optString("Name", userId), "", "");
     }
 
-    Page channels(int start, int limit) throws IOException {
+    public Page channels(int start, int limit) throws IOException {
         JSONObject result = request(url("LiveTv/Channels").addQueryParameter("userId", session.user)
                 .addQueryParameter("startIndex", "" + start).addQueryParameter("limit", "" + limit)
                 .addQueryParameter("enableImages", "false").addQueryParameter("addCurrentProgram", "false")
@@ -155,16 +165,16 @@ final class Jellyfin {
         return new Page(channels, items.length(), result.optInt("TotalRecordCount", -1));
     }
 
-    void favorite(String channel, boolean value) throws IOException {
+    public void favorite(Channels.Channel channel, boolean value) throws IOException {
         request(url("Users").addPathSegment(session.user).addPathSegment("FavoriteItems")
-                .addPathSegment(channel).build(), value ? "POST" : "DELETE", null);
+                .addPathSegment(channel.id()).build(), value ? "POST" : "DELETE", null);
     }
 
-    void logout() throws IOException {
+    public void logout() throws IOException {
         request(url("Sessions/Logout").build(), "POST", null);
     }
 
-    boolean hasGuide(long time, int hours) throws IOException {
+    public boolean hasGuide(long time, int hours) throws IOException {
         JSONObject result = request(url("LiveTv/Programs").addQueryParameter("userId", session.user)
                 .addQueryParameter("minEndDate", Instant.ofEpochMilli(time).toString())
                 .addQueryParameter("maxStartDate", Instant.ofEpochMilli(time + hours * 3_600_000L).toString())
@@ -176,7 +186,7 @@ final class Jellyfin {
         return items.length() != 0;
     }
 
-    Map<String, List<Channels.Program>> programs(List<String> ids, long time, int hours) throws IOException {
+    public Map<String, List<Channels.Program>> programs(List<String> ids, long time, int hours) throws IOException {
         Map<String, List<Channels.Program>> programs = new HashMap<>();
         for (String id : ids) programs.put(id, new ArrayList<>());
         if (ids.isEmpty()) return programs;
@@ -207,7 +217,7 @@ final class Jellyfin {
         return programs;
     }
 
-    Stream open(String channel, boolean fallback, boolean inset) throws IOException, JSONException {
+    public Stream open(Channels.Channel channel, boolean fallback, boolean inset, boolean recovering) throws IOException, JSONException {
         int bitrate = fallback ? (inset ? 2_000_000 : 6_000_000) : 200_000_000;
         int audioChannels = fallback ? 2 : 8;
         JSONObject hls = new JSONObject().put("Type", "Video").put("Container", "ts")
@@ -223,7 +233,7 @@ final class Jellyfin {
                 .put("DeviceProfile", new JSONObject().put("Name", "TippyTV")
                         .put("MaxStreamingBitrate", bitrate)
                         .put("TranscodingProfiles", new JSONArray().put(hls)));
-        JSONObject result = request(url("Items").addPathSegment(channel).addPathSegment("PlaybackInfo").build(), "POST", body);
+        JSONObject result = request(url("Items").addPathSegment(channel.id()).addPathSegment("PlaybackInfo").build(), "POST", body);
         JSONArray sources = result.optJSONArray("MediaSources");
         JSONObject source = sources == null ? null : sources.optJSONObject(0);
         if (source == null) throw new NoCompatibleStream();
@@ -241,7 +251,7 @@ final class Jellyfin {
         }
     }
 
-    void close(Stream stream) {
+    public void close(Stream stream) {
         if (!stream.playId.isBlank()) {
             try {
                 request(url("Videos/ActiveEncodings").addQueryParameter("deviceId", session.device)
