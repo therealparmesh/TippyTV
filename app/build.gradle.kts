@@ -7,8 +7,8 @@ android {
     compileSdk = 37
     ndkVersion = "28.2.13676358"
     externalNativeBuild { cmake { path = file("src/main/cpp/CMakeLists.txt"); version = "3.22.1" } }
-    sourceSets["main"].jniLibs.srcDir(rootProject.file("build/mpv/jni"))
-    sourceSets["main"].assets.srcDir(rootProject.file("build/mpv/assets"))
+    sourceSets["main"].jniLibs.directories.add("../build/mpv/jni")
+    sourceSets["main"].assets.directories.add("../build/mpv/assets")
     defaultConfig {
         applicationId = "com.parmesh.livetv"
         minSdk = 23
