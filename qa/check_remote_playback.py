@@ -75,12 +75,12 @@ def screenshot():
     return width, height, memoryview(raw)[-width * height * 4:]
 
 
-def pictures_visible():
+def pictures_visible(inset_aspect=16/9):
     # Resizing can temporarily precede the next GPU buffer. Require real pixels
     # within a bounded interval, rather than accepting only a player status.
     for attempt in range(6):
         try:
-            check_pictures()
+            check_pictures(inset_aspect)
             return
         except AssertionError:
             if attempt == 5:
@@ -88,7 +88,21 @@ def pictures_visible():
             time.sleep(1)
 
 
-def check_pictures():
+def check_geometry(width, pixels, bounds, aspect):
+    left, top, right, bottom = bounds
+    w, h = right - left, bottom - top
+    content_w, content_h = min(w, h * aspect), min(h, w / aspect)
+    # Both fixture feeds carry a magenta marker near the top-right of the image.
+    x = int(left + (w - content_w) / 2 + content_w * .94)
+    y = int(top + (h - content_h) / 2 + content_h * .10)
+    red, green, blue = pixels[(y * width + x) * 4:(y * width + x) * 4 + 3]
+    assert red > 160 and blue > 160 and green < 100, 'Picture edge is cropped, padded, or incorrectly scaled'
+    if content_w < w * .9:
+        x, y = int(left + (w - content_w) / 4), int(top + h * .4)
+        assert max(pixels[(y * width + x) * 4:(y * width + x) * 4 + 3]) < 45, 'Pillarbox contains video or stale pixels'
+
+
+def check_pictures(inset_aspect):
     # Assert pixels, not just the player's "Live" status: detached native surfaces
     # can keep decoding while rendering an entirely black picture.
     width, height, pixels = screenshot()
@@ -99,6 +113,7 @@ def check_pictures():
     assert 0 < width - right < width * .03, 'Inset is not near the right edge'
     if not any(n.get('text') == 'Channels' for n in tree):
         assert 0 < height - bottom < height * .03, 'Inset did not return to the bottom corner'
+    check_geometry(width, pixels, (left, top, right, bottom), inset_aspect)
     region = ((left + 8) / width, (top + 8) / height, (right - 8) / width, (bottom - 8) / height)
     for name, region in (('main', (.1, .1, .45, .4)), ('inset', region)):
         left, top, right, bottom = region
@@ -256,18 +271,14 @@ def both_live():
     return len(re.findall(r'TippyMPV (?:main|inset) status=LIVE(?:_COMPATIBLE)? ', dump)) == 2
 
 
-# A marker near the top-right of each source must reach the corresponding
-# displayed corner; this catches a smaller picture surrounded by green padding.
-def video_geometry(aspect):
-    width, height, pixels = screenshot()
-    content_w, content_h = min(width, height * aspect), min(height, width / aspect)
-    left, top = (width - content_w) / 2, (height - content_h) / 2
-    x, y = int(left + content_w * .94), int(top + content_h * .10)
-    red, green, blue = pixels[(y * width + x) * 4:(y * width + x) * 4 + 3]
-    assert red > 160 and blue > 160 and green < 100, 'Right edge is cropped, padded, or incorrectly scaled'
-    if aspect < width / height:
-        x, y = int(width * .03), int(height * .4)
-        assert max(pixels[(y * width + x) * 4:(y * width + x) * 4 + 3]) < 45, '4:3 picture was stretched'
+def swap_from_fullscreen():
+    key(19)
+    key(22)
+    key(22)
+    focused('Swap')
+    key(23)
+    controls_hidden()
+
 
 geometry_opened = request('/qa/status')['opened']
 for rendition, aspect in (('_hd', 16/9), ('_720', 16/9), ('_43', 4/3), ('', 16/9)):
@@ -276,12 +287,18 @@ for rendition, aspect in (('_hd', 16/9), ('_720', 16/9), ('_43', 4/3), ('', 16/9
     controls_hidden()
     for attempt in range(12):
         try:
-            video_geometry(aspect)
+            w, h, pixels = screenshot()
+            check_geometry(w, pixels, (0, 0, w, h), aspect)
             break
         except AssertionError:
             if attempt == 11:raise
             time.sleep(1)
     pictures_visible()
+    if rendition == '_43':
+        swap_from_fullscreen()
+        pictures_visible(inset_aspect=4/3)
+        swap_from_fullscreen()
+        pictures_visible()
 assert request('/qa/status')['opened'] == geometry_opened, 'Resolution change reopened a stream'
 print('PASS: 1080p → 720p → 4:3 → 16:9 preserve full picture, aspect ratio and PiP', flush=True)
 

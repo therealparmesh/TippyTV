@@ -236,6 +236,7 @@ final class Playback {
         slot.statusSince = SystemClock.elapsedRealtime();
         changed.run();
         MpvView surface = slot.surface;
+        surface.aspect(0);
         surface.whenReady(() -> {
             if (slot.generation != generation) return;
             MpvView.Target target = surface.acquire();

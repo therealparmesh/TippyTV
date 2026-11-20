@@ -486,7 +486,7 @@ public final class MainActivity extends ComponentActivity {
         MpvView mainSurface = new MpvView(this);
         mainPicture = new FrameLayout(this);
         video.addView(mainPicture, new FrameLayout.LayoutParams(-1, -1));
-        mainPicture.addView(mainSurface, new FrameLayout.LayoutParams(-1, -1));
+        mainPicture.addView(mainSurface, new FrameLayout.LayoutParams(-2, -2, Gravity.CENTER));
         mainMessage = text("", 18, TEXT);
         mainMessage.setGravity(Gravity.CENTER);
         mainMessage.setPadding(dp(22), dp(12), dp(22), dp(12));
@@ -503,7 +503,7 @@ public final class MainActivity extends ComponentActivity {
         inset.setContentDescription(getString(R.string.muted_inset));
         inset.setPadding(dp(2), dp(2), dp(2), dp(2));
         MpvView insetSurface = new MpvView(this);
-        inset.addView(insetSurface, new FrameLayout.LayoutParams(-1, -1));
+        inset.addView(insetSurface, new FrameLayout.LayoutParams(-2, -2, Gravity.CENTER));
         insetMessage = text("", 14, TEXT); insetMessage.setGravity(Gravity.CENTER);
         inset.addView(insetMessage, new FrameLayout.LayoutParams(-1, -1));
         video.addView(inset, new FrameLayout.LayoutParams(0, 0, Gravity.BOTTOM | Gravity.END));
