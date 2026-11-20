@@ -14,8 +14,8 @@ android {
         minSdk = 23
         targetSdk = 37
         externalNativeBuild { cmake { abiFilters += listOf("armeabi-v7a", "arm64-v8a") } }
-        versionCode = 21
-        versionName = "0.0.20"
+        versionCode = 22
+        versionName = "0.0.21"
     }
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
