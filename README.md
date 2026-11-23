@@ -12,7 +12,9 @@ If your TV is connected through Android Debug Bridge (ADB), install or update it
 adb install -r tippytv-1.0.0.apk
 ```
 
-Open TippyTV and add your own source. On subsequent launches, it opens your last profile.
+Open TippyTV and add your first profile. On later launches, the app opens the last profile you used.
+
+When a saved lineup is available, you can browse and tune channels while the TV checks for changes. A failed refresh keeps the last complete lineup. Programme listings load as you browse and stay in memory for the session.
 
 ## Connect a source
 
@@ -50,6 +52,7 @@ Jellyfin saves favorites to your server account. Xtream and playlist favorites b
 
 - **Phone setup page won’t open.** Put both devices on the same local network. Guest Wi-Fi isolation, a VPN, or DNS rebinding protection can prevent the phone from reaching the TV. Remote setup is also available.
 - **Server won’t connect.** Check the address and port, and grant local network access if prompted. A Jellyfin `.local` hostname requires multicast DNS. For Xtream, enter the base address, such as `https://tv.example:8443`.
+- **The lineup loads from scratch.** Each profile has its own encrypted channel cache. The TV loads from the source after sign-out, profile removal, Android cache eviction, or when a compressed lineup exceeds 8 MiB.
 - **Channels load but the guide is empty.** Check that listings cover the selected time. An Xtream channel’s `epg_channel_id` or M3U entry’s `tvg-id` must match the XMLTV channel ID.
 - **Playback stops.** Choose **Try again**. For Jellyfin, **Try a compatible stream** requests H.264/AAC conversion if your server permits it. Xtream and M3U use the provider’s stream directly.
 

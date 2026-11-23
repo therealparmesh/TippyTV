@@ -51,7 +51,7 @@ public class PlaylistSourceTest {
         assertEquals(first, PlaylistSource.parse("#EXTM3U\n" + b + other + a, BASE, "News"));
         assertTrue(
                 first.values().stream()
-                        .anyMatch(e -> e.url().encodedPath().equals("/group/east.m3u8")));
+                        .anyMatch(e -> e.url().equals(BASE.resolve("east.m3u8").toString())));
         assertFalse(first.containsKey("id:news"));
     }
 
@@ -60,7 +60,7 @@ public class PlaylistSourceTest {
         String data = "\uFEFF\r\n#EXTM3U\n#EXT-X-TARGETDURATION:4\n#EXTINF:4,\nsegment.ts\n";
         var channels = PlaylistSource.parse(data, BASE, "Live");
         assertEquals(1, channels.size());
-        assertEquals(BASE, channels.get("stream").url());
+        assertEquals(BASE.toString(), channels.get("stream").url());
     }
 
     @Test
@@ -79,7 +79,7 @@ public class PlaylistSourceTest {
     @Test
     public void plainM3uCanUseRelativePaths() throws IOException {
         assertEquals(
-                BASE.resolve("news.ts"),
+                BASE.resolve("news.ts").toString(),
                 PlaylistSource.parse("news.ts\n", BASE, "Live").values().iterator().next().url());
     }
 
@@ -89,11 +89,13 @@ public class PlaylistSourceTest {
                 new java.util.ArrayList<>(
                         java.util.List.of(
                                 new Channels.Program("Next", 20, 30),
-                                new Channels.Program("Now", 10, -1)));
+                                new Channels.Program("Now", 10, -1),
+                                new Channels.Program("Unknown end", 30, -1)));
+        PlaylistSource.finishGuideRow(row);
         assertEquals(
                 java.util.List.of(
                         new Channels.Program("Now", 10, 20), new Channels.Program("Next", 20, 30)),
-                PlaylistSource.guideRow(row));
+                row);
     }
 
     @Test

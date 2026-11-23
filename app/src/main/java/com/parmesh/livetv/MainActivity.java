@@ -77,6 +77,7 @@ public final class MainActivity extends ComponentActivity {
     private final DateFormat clock = DateFormat.getTimeInstance(DateFormat.SHORT);
     private final DateFormat guideDate = DateFormat.getDateInstance(DateFormat.MEDIUM);
     private SessionStore store;
+    private LineupCache lineupCache;
     private SignInScreen signIn;
     private final PhoneSetup phone = new PhoneSetup(this);
     private TvSource api;
@@ -445,6 +446,7 @@ public final class MainActivity extends ComponentActivity {
 
     private void connected(Jellyfin.Session session) {
         profile = session;
+        lineupCache = new LineupCache(this, session);
         api =
                 session.direct()
                         ? new PlaylistSource(this, session, checkedPlaylist().take(session))
@@ -754,46 +756,69 @@ public final class MainActivity extends ComponentActivity {
         TvSource server = api;
         long generation = ++catalogGeneration;
         long favoriteBaseline = favoriteRevision;
-        boolean replace = !fullLineup.isEmpty();
+        LineupCache saved = lineupCache;
+        boolean hasLineup = !fullLineup.isEmpty();
         catalogBusy = true;
         loadProblem = null;
         updateCount();
         catalog.execute(
                 () -> {
+                    boolean replace = hasLineup;
+                    if (!replace) {
+                        List<Channels.Channel> cached = saved.read(server);
+                        if (catalogGeneration != generation) return;
+                        if (!cached.isEmpty()) {
+                            publishCatalog(
+                                    server, generation, favoriteBaseline, cached, false, null);
+                            replace = true;
+                        }
+                    }
                     var accumulated = new LinkedHashMap<String, Channels.Channel>();
                     int cursor = 0, pages = 0;
                     try {
                         while (catalogGeneration == generation) {
                             TvSource.Page page = server.channels(cursor);
                             if (catalogGeneration != generation) return;
-                            int priorSize = accumulated.size();
-                            for (Channels.Channel c : page.channels()) accumulated.put(c.id(), c);
                             cursor = page.nextStart();
                             boolean done = cursor < 0;
-                            if (!done && accumulated.size() == priorSize) {
-                                throw new java.io.IOException("Channel paging did not advance.");
+                            List<Channels.Channel> snapshot;
+                            if (server instanceof PlaylistSource) {
+                                snapshot = page.channels();
+                            } else {
+                                int priorSize = accumulated.size();
+                                for (Channels.Channel c : page.channels())
+                                    accumulated.put(c.id(), c);
+                                if (!done && accumulated.size() == priorSize) {
+                                    throw new java.io.IOException(
+                                            "Channel paging did not advance.");
+                                }
+                                if (!done && (replace || pages++ % 3 != 0)) continue;
+                                snapshot = List.copyOf(accumulated.values());
                             }
-                            if (done || (!replace && pages++ % 3 == 0)) {
-                                publishCatalog(
-                                        server,
-                                        generation,
-                                        favoriteBaseline,
-                                        accumulated,
-                                        done,
-                                        null);
+                            publishCatalog(
+                                    server, generation, favoriteBaseline, snapshot, done, null);
+                            if (done) {
+                                saved.write(snapshot, server);
+                                return;
                             }
-                            if (done) return;
                         }
                     } catch (Exception failure) {
                         boolean expired =
                                 failure instanceof Jellyfin.HttpFailure http && http.status == 401;
+                        boolean denied =
+                                failure instanceof Jellyfin.HttpFailure http && http.status == 403;
                         String error =
-                                failure instanceof Jellyfin.HttpFailure http && http.status == 403
+                                denied
                                         ? getString(R.string.no_live_tv_access)
                                         : needsLocalNetworkPermission()
                                                 ? getString(R.string.local_network_access)
                                                 : getString(R.string.channels_load_failed);
-                        if (expired || replace) {
+                        if (catalogGeneration != generation) return;
+                        if (denied) {
+                            saved.clear();
+                            publishCatalog(
+                                    server, generation, favoriteBaseline, List.of(), true, error);
+                        } else if (expired || replace) {
                             ui.post(
                                     () -> {
                                         if (destroyed
@@ -810,7 +835,12 @@ public final class MainActivity extends ComponentActivity {
                                     });
                         } else
                             publishCatalog(
-                                    server, generation, favoriteBaseline, accumulated, true, error);
+                                    server,
+                                    generation,
+                                    favoriteBaseline,
+                                    List.copyOf(accumulated.values()),
+                                    true,
+                                    error);
                     }
                 });
     }
@@ -819,10 +849,9 @@ public final class MainActivity extends ComponentActivity {
             TvSource server,
             long generation,
             long favoriteBaseline,
-            Map<String, Channels.Channel> channels,
+            List<Channels.Channel> snapshot,
             boolean done,
             String error) {
-        List<Channels.Channel> snapshot = List.copyOf(channels.values());
         List<Channels.Channel> filtered =
                 snapshot.stream()
                         .filter(c -> !c.adult())
@@ -834,7 +863,7 @@ public final class MainActivity extends ComponentActivity {
                     filteredLineup = filtered;
                     catalogBusy = !done;
                     loadProblem = error;
-                    if (done && error == null) {
+                    if (done && (error == null || snapshot.isEmpty())) {
                         ++guideGeneration;
                         epg.clear();
                         noGuideUntil = guideCheckedUntil = guideBackoffUntil = 0;
@@ -1839,6 +1868,7 @@ public final class MainActivity extends ComponentActivity {
         ++guideGeneration;
         noGuideUntil = guideCheckedUntil = guideBackoffUntil = 0;
         epg.clear();
+        lineupCache.close(true);
         store.clear(profile);
         int pending = profile.direct() ? R.string.removing_profile : R.string.signing_out;
         showLogin(getString(revoke ? pending : R.string.sign_in_expired));
@@ -1891,6 +1921,7 @@ public final class MainActivity extends ComponentActivity {
     @Override
     protected void onDestroy() {
         destroyed = true;
+        if (lineupCache != null) lineupCache.close(false);
         ui.removeCallbacks(loadingRefresh);
         ++catalogGeneration;
         ++visibleGeneration;

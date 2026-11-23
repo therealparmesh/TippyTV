@@ -36,11 +36,12 @@ final class PlaylistSource implements TvSource {
     private final Jellyfin.Session profile;
     private final SharedPreferences stars;
 
-    record Entry(String name, String number, String guide, HttpUrl url, boolean adult) {}
+    record Entry(String name, String number, String guide, String url, boolean adult) {}
 
     private volatile Map<String, Entry> entries = Map.of();
     private Map<String, List<Channels.Program>> listings = Map.of();
-    private Map<String, Entry> guideCatalog;
+    private volatile Set<String> guideIds = Set.of();
+    private Set<String> loadedGuideIds;
     private long guideExpires;
     private final Object guideLock = new Object();
 
@@ -161,7 +162,11 @@ final class PlaylistSource implements TvSource {
                                     name,
                                     number,
                                     epg,
-                                    streamBase.newBuilder().addPathSegment(id + ".ts").build(),
+                                    streamBase
+                                            .newBuilder()
+                                            .addPathSegment(id + ".ts")
+                                            .build()
+                                            .toString(),
                                     adult || adultCategories.contains(category)));
             }
             json.endArray();
@@ -202,7 +207,7 @@ final class PlaylistSource implements TvSource {
                 && Pattern.compile("(?m)^#EXT-X-(STREAM-INF|TARGETDURATION):")
                         .matcher(data)
                         .find()) {
-            loaded.put("stream", new Entry(profileName, "", "", base, false));
+            loaded.put("stream", new Entry(profileName, "", "", base.toString(), false));
         } else {
             String name = "", number = "", guide = "";
             List<Entry> channels = new ArrayList<>();
@@ -245,7 +250,9 @@ final class PlaylistSource implements TvSource {
                         url = base.resolve(line);
                     if (url != null) {
                         String label = name.isEmpty() ? url.host() : name;
-                        Entry entry = new Entry(label, number, guide, url, adult || groupAdult);
+                        Entry entry =
+                                new Entry(
+                                        label, number, guide, url.toString(), adult || groupAdult);
                         channels.add(entry);
                     }
                     adult = false;
@@ -287,18 +294,32 @@ final class PlaylistSource implements TvSource {
     public Page channels(int start) throws IOException {
         Map<String, Entry> loaded = initial != null ? initial : download(profile);
         initial = null;
+        return new Page(channelList(loaded), -1);
+    }
+
+    Entry entry(String id) {
+        return entries.get(id);
+    }
+
+    List<Channels.Channel> channelList(Map<String, Entry> loaded) {
+        Map<String, ?> favorites = stars.getAll();
+        Set<String> ids = new HashSet<>();
         List<Channels.Channel> channels = new ArrayList<>(loaded.size());
         loaded.forEach(
-                (id, entry) ->
-                        channels.add(
-                                new Channels.Channel(
-                                        id,
-                                        entry.name(),
-                                        entry.number(),
-                                        entry.name().equals(stars.getString(id, null)),
-                                        entry.adult())));
+                (id, entry) -> {
+                    if (!profile.guide().isEmpty() && !entry.guide().isEmpty())
+                        ids.add(entry.guide());
+                    channels.add(
+                            new Channels.Channel(
+                                    id,
+                                    entry.name(),
+                                    entry.number(),
+                                    entry.name().equals(favorites.get(id)),
+                                    entry.adult()));
+                });
         entries = loaded;
-        return new Page(channels, -1);
+        if (!ids.equals(guideIds)) guideIds = ids;
+        return channels;
     }
 
     public Jellyfin.Stream open(
@@ -307,7 +328,7 @@ final class PlaylistSource implements TvSource {
         Entry e = (recovering ? download(profile) : entries).get(channel.id());
         if (e == null || !e.name().equals(channel.name()))
             throw new IllegalStateException("Channel changed. Refresh the channel list.");
-        return new Jellyfin.Stream(Jellyfin.nativePlaybackUrl(e.url()), "", "", false);
+        return new Jellyfin.Stream(Jellyfin.nativePlaybackUrl(HttpUrl.get(e.url())), "", "", false);
     }
 
     public void close(Jellyfin.Stream stream) {}
@@ -344,12 +365,10 @@ final class PlaylistSource implements TvSource {
     private void guide() throws IOException {
         if (profile.guide().isEmpty()) return;
         long now = System.currentTimeMillis();
-        Map<String, Entry> catalog = entries;
+        Set<String> wanted = guideIds;
         long elapsed = android.os.SystemClock.elapsedRealtime();
-        if (catalog == guideCatalog && elapsed < guideExpires) return;
+        if (wanted == loadedGuideIds && elapsed < guideExpires) return;
         Map<String, List<Channels.Program>> result = new HashMap<>();
-        Set<String> wanted = new HashSet<>();
-        for (Entry e : catalog.values()) if (!e.guide().isEmpty()) wanted.add(e.guide());
         if (!wanted.isEmpty())
             try (Response r = fetch(HttpUrl.get(profile.guide()));
                     InputStream input = guideInput(r.body())) {
@@ -391,10 +410,10 @@ final class PlaylistSource implements TvSource {
             } catch (org.xmlpull.v1.XmlPullParserException e) {
                 throw new IOException("Could not read programme guide.", e);
             }
-        result.replaceAll((k, rows) -> guideRow(rows));
+        result.values().forEach(PlaylistSource::finishGuideRow);
         listings = result;
-        guideCatalog = catalog;
-        guideExpires = elapsed + 15 * 60_000L;
+        loadedGuideIds = wanted;
+        guideExpires = android.os.SystemClock.elapsedRealtime() + 15 * 60_000L;
     }
 
     private static InputStream guideInput(ResponseBody body) throws IOException {
@@ -405,17 +424,15 @@ final class PlaylistSource implements TvSource {
         return gzip ? new GZIPInputStream(raw) : raw;
     }
 
-    static List<Channels.Program> guideRow(List<Channels.Program> row) {
-        List<Channels.Program> sorted = Channels.sortedPrograms(row);
-        List<Channels.Program> result = new ArrayList<>(sorted.size());
-        for (int i = 0; i < sorted.size(); i++) {
-            Channels.Program p = sorted.get(i);
-            // XMLTV permits an omitted stop. The next programme supplies its boundary.
-            if (p.end() < 0 && i + 1 < sorted.size())
-                p = new Channels.Program(p.title(), p.start(), sorted.get(i + 1).start());
-            if (p.end() > p.start()) result.add(p);
+    static void finishGuideRow(List<Channels.Program> row) {
+        row.sort(Comparator.comparingLong(Channels.Program::start));
+        // XMLTV permits an omitted stop. The next programme supplies its boundary.
+        for (int i = 0; i + 1 < row.size(); i++) {
+            Channels.Program p = row.get(i);
+            if (p.end() < 0)
+                row.set(i, new Channels.Program(p.title(), p.start(), row.get(i + 1).start()));
         }
-        return result;
+        row.removeIf(p -> p.end() <= p.start());
     }
 
     public boolean hasGuide(long time, int hours) throws IOException {
@@ -438,8 +455,8 @@ final class PlaylistSource implements TvSource {
             List<Channels.Program> row = new ArrayList<>();
             if (e != null)
                 for (Channels.Program item : snapshot.getOrDefault(e.guide(), List.of())) {
-                    if (item.end() > time && item.start() < time + hours * 3_600_000L)
-                        row.add(item);
+                    if (item.start() >= time + hours * 3_600_000L) break;
+                    if (item.end() > time) row.add(item);
                 }
             rows.put(id, row);
         }

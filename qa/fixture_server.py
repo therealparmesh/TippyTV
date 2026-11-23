@@ -21,6 +21,7 @@ state = {
     "open_at_logout": None,
     "replacement": False,
     "guide_failure": False,
+    "channel_failure": False,
     "sequence_offset": 0,
     "rendition": "",
     "silent_start": False,
@@ -109,6 +110,8 @@ class Handler(BaseHTTPRequestHandler):
                     .rstrip('"')
                 )
                 valid = token in state["tokens"]
+                if valid and state["channel_failure"]:
+                    return self.result(503, {})
                 lineup = (
                     [dict(channels[0], Id="replacement"), *channels[1:]]
                     if state["replacement"]
@@ -279,6 +282,8 @@ class Handler(BaseHTTPRequestHandler):
             )
             with lock:
                 valid = token in state["tokens"]
+                if valid and state["channel_failure"]:
+                    return self.result(503, {})
                 if valid:
                     state["tokens"].remove(token)
                     state["logouts"] += 1
@@ -337,9 +342,9 @@ class Handler(BaseHTTPRequestHandler):
             with lock:
                 state["media_failure"] = status
             return self.result(204)
-        if path == "/qa/guide_failure":
+        if path in ("/qa/guide_failure", "/qa/channel_failure"):
             with lock:
-                state["guide_failure"] = q.get("enabled", ["1"])[0] == "1"
+                state[path.split("/")[-1]] = q.get("enabled", ["1"])[0] == "1"
             return self.result(200, {})
         if path == "/qa/replacement":
             with lock:

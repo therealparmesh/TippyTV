@@ -655,3 +655,19 @@ print(
     "PASS: silent startup times out, releases its resources, and remains retryable",
     flush=True,
 )
+
+
+# A failed cold-start refresh must keep the last complete lineup browsable.
+request("/qa/channel_failure", {})
+try:
+    adb("shell", "am", "force-stop", "com.parmesh.livetv")
+    adb("shell", "am", "start", "-n", "com.parmesh.livetv/.MainActivity")
+    for _ in range(10):
+        labels = {node.get("text") for node in nodes()}
+        if {"1203 channels · Refresh needed", "1  Amber One"} <= labels:
+            break
+    else:
+        raise AssertionError("Failed refresh lost the saved lineup")
+finally:
+    request("/qa/channel_failure?enabled=0", {})
+print("PASS: cold start retains saved channels during a provider outage", flush=True)

@@ -118,7 +118,7 @@ final class SessionStore {
         prefs.edit().putString("active", id).apply();
     }
 
-    private static String profileId(Jellyfin.Session session) {
+    static String profileId(Jellyfin.Session session) {
         return UUID.nameUUIDFromBytes(
                         (session.server() + "\n" + session.user()).getBytes(StandardCharsets.UTF_8))
                 .toString();
@@ -163,7 +163,7 @@ final class SessionStore {
         edit.apply();
     }
 
-    private SecretKey key() throws Exception {
+    static synchronized SecretKey key() throws Exception {
         KeyStore store = KeyStore.getInstance("AndroidKeyStore");
         store.load(null);
         if (store.getKey(KEY, null) instanceof SecretKey key) return key;
