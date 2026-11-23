@@ -9,7 +9,7 @@ Download the signed APK from [Releases](https://github.com/therealparmesh/TippyT
 If your TV is connected through Android Debug Bridge (ADB), install or update it with:
 
 ```sh
-adb install -r tippytv-1.0.0.apk
+adb install -r tippytv-1.1.0.apk
 ```
 
 Open TippyTV and add your first profile. On later launches, the app opens the last profile you used.
