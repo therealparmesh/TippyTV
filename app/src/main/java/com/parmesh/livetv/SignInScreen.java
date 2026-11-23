@@ -88,7 +88,7 @@ final class SignInScreen {
         Button password = action(R.string.use_password, false, null);
         address.setOnEditorActionListener(
                 (view, action, event) -> {
-                    if (action != EditorInfo.IME_ACTION_NEXT || !quick.isEnabled()) return false;
+                    if (action != EditorInfo.IME_ACTION_NEXT) return false;
                     if (rememberAddress(address)) quick.requestFocus();
                     return true;
                 });
