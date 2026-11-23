@@ -79,7 +79,7 @@ public final class MainActivity extends ComponentActivity {
     private SessionStore store;
     private LineupCache lineupCache;
     private SignInScreen signIn;
-    private TvDialog profilePicker;
+    final List<TvDialog> dialogs = new ArrayList<>();
     private final PhoneSetup phone = new PhoneSetup(this);
     private TvSource api;
     private Jellyfin.Session profile;
@@ -279,7 +279,13 @@ public final class MainActivity extends ComponentActivity {
         dialog.show(settings);
     }
 
+    private void dismissDialogs() {
+        // A disappearing screen cannot receive focus when its dialogs finish dismissing.
+        while (!dialogs.isEmpty()) dialogs.remove(dialogs.size() - 1).dismiss();
+    }
+
     void showScreen(FrameLayout screen) {
+        dismissDialogs();
         ViewCompat.setOnApplyWindowInsetsListener(
                 screen,
                 (view, insets) -> {
@@ -307,10 +313,11 @@ public final class MainActivity extends ComponentActivity {
     }
 
     View dialogOpener() {
-        View focused =
-                profilePicker != null && profilePicker.isShowing()
-                        ? profilePicker.window().getCurrentFocus()
-                        : getCurrentFocus();
+        for (int i = dialogs.size() - 1; i >= 0; i--) {
+            TvDialog dialog = dialogs.get(i);
+            if (dialog.isShowing()) return dialog.window().getCurrentFocus();
+        }
+        View focused = getCurrentFocus();
         if (focused != null) return focused;
         if (fullscreen) return returnToChannels;
         return queryButton;
@@ -394,7 +401,7 @@ public final class MainActivity extends ComponentActivity {
     }
 
     void signedIn(Jellyfin.Session session) {
-        if (profilePicker != null) profilePicker.dismiss();
+        dismissDialogs();
         if (signIn != null) signIn.cancel();
         signIn = null;
         accounts.execute(
@@ -1691,7 +1698,6 @@ public final class MainActivity extends ComponentActivity {
             new PlaylistSetup(this, accounts, method.equals("xtream")).fromPhone(form);
         } else {
             if (api != null) {
-                if (profilePicker != null) profilePicker.dismiss();
                 if (player != null) player.stopAll();
                 getIntent().putExtra("addAccount", true);
             }
@@ -1709,11 +1715,6 @@ public final class MainActivity extends ComponentActivity {
 
     void profiles() {
         TvDialog dialog = new TvDialog(this, getString(R.string.profiles));
-        profilePicker = dialog;
-        dialog.onDismiss(
-                () -> {
-                    if (profilePicker == dialog) profilePicker = null;
-                });
         LinearLayout rows = vertical();
         View initial = null;
         String active = api == null ? "" : store.activeId();
@@ -1937,7 +1938,7 @@ public final class MainActivity extends ComponentActivity {
     @Override
     protected void onDestroy() {
         destroyed = true;
-        if (profilePicker != null) profilePicker.dismiss();
+        dismissDialogs();
         if (lineupCache != null) lineupCache.close(false);
         ui.removeCallbacks(loadingRefresh);
         ++catalogGeneration;

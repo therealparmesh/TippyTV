@@ -21,6 +21,7 @@ final class TvDialog {
     private final LinearLayout card;
     private final View opener;
     private Runnable onDismiss;
+    private Runnable selection;
 
     TvDialog(MainActivity activity, String title) {
         this.activity = activity;
@@ -38,9 +39,11 @@ final class TvDialog {
         dialog.setContentView(card);
         dialog.setOnDismissListener(
                 unused -> {
-                    if (opener != null && opener.isShown() && opener.isEnabled())
+                    if (activity.dialogs.remove(this)
+                            && opener != null && opener.isShown() && opener.isEnabled())
                         opener.requestFocusFromTouch();
                     if (onDismiss != null) onDismiss.run();
+                    if (selection != null) selection.run();
                 });
     }
 
@@ -59,8 +62,8 @@ final class TvDialog {
         return activity.button(
                 label,
                 () -> {
+                    selection = action;
                     dialog.dismiss();
-                    activity.getWindow().getDecorView().post(action);
                 });
     }
 
@@ -73,6 +76,7 @@ final class TvDialog {
     }
 
     void dismiss() {
+        selection = null;
         dialog.dismiss();
     }
 
@@ -105,6 +109,7 @@ final class TvDialog {
         window.setDimAmount(.65f);
         window.setGravity(Gravity.CENTER);
         dialog.show();
+        activity.dialogs.add(this);
         int width = activity.getWindow().getDecorView().getWidth();
         window.setLayout(
                 Math.min(activity.dp(580), Math.max(activity.dp(240), width - activity.dp(32))),
