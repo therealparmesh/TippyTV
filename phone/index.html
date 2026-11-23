@@ -14,15 +14,16 @@
       <h1>Add a profile</h1>
       <form id="setup">
         <label
-          >Source<select id="method">
+          >Source<select id="method" required>
+            <option value="" selected disabled>Choose a source</option>
             <option value="quick">Jellyfin · Quick Connect</option>
             <option value="jellyfin">Jellyfin · Password</option>
             <option value="xtream">Xtream</option>
-            <option value="playlist">Playlist or Gist</option>
+            <option value="playlist">M3U playlist</option>
           </select></label
         >
         <label hidden>Profile name<input id="name" maxlength="160" /></label>
-        <label
+        <label hidden
           ><span id="addressLabel">Server address</span
           ><input
             id="address"
@@ -52,7 +53,7 @@
             spellcheck="false"
         /></label>
         <p id="message" role="status"></p>
-        <button type="submit">Continue on TV</button
+        <button type="submit" disabled>Continue on TV</button
         ><button type="button" id="cancel">Cancel</button>
       </form>
     </main>

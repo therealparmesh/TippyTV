@@ -79,6 +79,7 @@ public final class MainActivity extends ComponentActivity {
     private SessionStore store;
     private LineupCache lineupCache;
     private SignInScreen signIn;
+    private TvDialog profilePicker;
     private final PhoneSetup phone = new PhoneSetup(this);
     private TvSource api;
     private Jellyfin.Session profile;
@@ -305,7 +306,12 @@ public final class MainActivity extends ComponentActivity {
         else jump(Channels.jumpPage(focusedPosition, adapter.getItemCount(), 0));
     }
 
-    View defaultBrowserFocus() {
+    View dialogOpener() {
+        View focused =
+                profilePicker != null && profilePicker.isShowing()
+                        ? profilePicker.window().getCurrentFocus()
+                        : getCurrentFocus();
+        if (focused != null) return focused;
         if (fullscreen) return returnToChannels;
         return queryButton;
     }
@@ -371,6 +377,10 @@ public final class MainActivity extends ComponentActivity {
         return l;
     }
 
+    boolean hasSavedProfiles() {
+        return !store.ids().isEmpty();
+    }
+
     private void showLogin(String message) {
         if (signIn == null)
             signIn =
@@ -379,10 +389,12 @@ public final class MainActivity extends ComponentActivity {
                             accounts,
                             java.util.UUID.randomUUID().toString(),
                             store.address());
-        signIn.show(message, signingOut);
+        if (getIntent().getBooleanExtra("addAccount", false)) signIn.serverPage(message, true);
+        else signIn.sources(message, signingOut, false);
     }
 
     void signedIn(Jellyfin.Session session) {
+        if (profilePicker != null) profilePicker.dismiss();
         if (signIn != null) signIn.cancel();
         signIn = null;
         accounts.execute(
@@ -1681,6 +1693,7 @@ public final class MainActivity extends ComponentActivity {
             new PlaylistSetup(this, accounts, method.equals("xtream")).fromPhone(form);
         } else {
             if (api != null) {
+                if (profilePicker != null) profilePicker.dismiss();
                 if (player != null) player.stopAll();
                 getIntent().putExtra("addAccount", true);
             }
@@ -1692,8 +1705,17 @@ public final class MainActivity extends ComponentActivity {
         }
     }
 
+    void addPlaylist(boolean xtream) {
+        new PlaylistSetup(this, accounts, xtream).show();
+    }
+
     void profiles() {
         TvDialog dialog = new TvDialog(this, getString(R.string.profiles));
+        profilePicker = dialog;
+        dialog.onDismiss(
+                () -> {
+                    if (profilePicker == dialog) profilePicker = null;
+                });
         LinearLayout rows = vertical();
         View initial = null;
         String active = api == null ? "" : store.activeId();
@@ -1715,25 +1737,21 @@ public final class MainActivity extends ComponentActivity {
             if (current || initial == null) initial = item;
         }
         if (initial != null) dialog.scroll(rows, Math.min(185, rows.getChildCount() * 44 + 16));
-        Button add =
-                dialog.action(
-                        R.string.add_account,
-                        () -> {
-                            getIntent().putExtra("addAccount", true);
-                            recreate();
-                        });
-        dialog.add(dialog.action(R.string.phone_setup, this::openPhoneSetup), 8);
-        dialog.add(add, 8);
-        dialog.add(
-                dialog.action(
-                        R.string.add_playlist,
-                        () -> new PlaylistSetup(this, accounts, false).show()),
-                8);
-        dialog.add(
-                dialog.action(
-                        R.string.add_xtream, () -> new PlaylistSetup(this, accounts, true).show()),
-                8);
-        dialog.show(initial == null ? add : initial);
+        if (api != null) {
+            dialog.add(text(getString(R.string.add_profile), 16, DIM), 16);
+            dialog.add(button(R.string.phone_setup, this::openPhoneSetup), 8);
+            dialog.add(
+                    dialog.action(
+                            R.string.source_jellyfin,
+                            () -> {
+                                getIntent().putExtra("addAccount", true);
+                                recreate();
+                            }),
+                    8);
+            dialog.add(button(R.string.source_xtream, () -> addPlaylist(true)), 8);
+            dialog.add(button(R.string.source_playlist, () -> addPlaylist(false)), 8);
+        }
+        dialog.show(initial);
     }
 
     private void serverDialog() {
@@ -1921,6 +1939,7 @@ public final class MainActivity extends ComponentActivity {
     @Override
     protected void onDestroy() {
         destroyed = true;
+        if (profilePicker != null) profilePicker.dismiss();
         if (lineupCache != null) lineupCache.close(false);
         ui.removeCallbacks(loadingRefresh);
         ++catalogGeneration;

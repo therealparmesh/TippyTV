@@ -24,8 +24,7 @@ final class TvDialog {
 
     TvDialog(MainActivity activity, String title) {
         this.activity = activity;
-        View focused = activity.getCurrentFocus();
-        opener = focused == null ? activity.defaultBrowserFocus() : focused;
+        opener = activity.dialogOpener();
         dialog = new Dialog(activity);
         dialog.requestWindowFeature(Window.FEATURE_NO_TITLE);
         card = activity.vertical();

@@ -8,6 +8,7 @@ function configure() {
   const playlist = method.value === "playlist",
     xtream = method.value === "xtream";
   for (const [id, visible] of Object.entries({
+    address: Boolean(method.value),
     name: playlist || xtream,
     guide: playlist,
     user: xtream || method.value === "jellyfin",
@@ -18,6 +19,7 @@ function configure() {
     field.disabled = !visible;
     field.required = visible && id !== "guide" && (id !== "password" || xtream);
   }
+  form.querySelector('button[type="submit"]').disabled = !method.value;
   byId("addressLabel").textContent = playlist
     ? "Playlist URL or Gist"
     : "Server address";

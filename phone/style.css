@@ -58,3 +58,8 @@ button[type="submit"] {
   background: var(--drac-purple);
   color: var(--drac-bg);
 }
+
+button[type="submit"]:disabled {
+  background: var(--drac-ui-bg-dark);
+  color: var(--drac-comment);
+}

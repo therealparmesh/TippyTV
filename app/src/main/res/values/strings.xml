@@ -7,7 +7,7 @@
     <string name="guide_loading">Loading guide…</string>
     <string name="favorite_channel_label">★&#160;&#160;%1$s</string>
     <string name="connect_heading">Connect to Jellyfin</string>
-    <string name="connect_description">Enter your Jellyfin server address, or choose Profiles to add an Xtream account or a playlist.</string>
+    <string name="connect_description">Enter your server address, then choose how to sign in.</string>
     <string name="server_address">Server address</string>
     <string name="quick_connect">Quick Connect</string>
     <string name="use_password">Use a password</string>
@@ -130,8 +130,13 @@
     <string name="removing_profile">Removing profile…</string>
     <string name="profile_removed">Profile removed from this TV.</string>
     <string name="profiles">Profiles</string>
-    <string name="add_account">Add Jellyfin account</string>
-    <string name="add_playlist">Add playlist</string>
+    <string name="add_profile">Add a profile</string>
+    <string name="choose_source_description">Scan a QR code to type on your phone, or choose a source below.</string>
+    <string name="saved_profiles">Choose a saved profile</string>
+    <string name="source_jellyfin">Jellyfin</string>
+    <string name="source_xtream">Xtream</string>
+    <string name="source_playlist">M3U playlist</string>
+    <string name="add_playlist">Add M3U playlist</string>
     <string name="remove_profile">Remove profile</string>
     <string name="remove_profile_title">Remove profile?</string>
     <string name="remove_profile_detail">“%1$s” and its favorites will be removed from this TV.</string>
@@ -153,7 +158,7 @@
     <string name="xtream_server_required">Enter the server URL without a username, password, query, or fragment.</string>
     <string name="enter_password">Enter your password.</string>
     <string name="xtream_read_failed">Could not load channels. Check your server URL, username, and password.</string>
-    <string name="phone_setup">Set up with phone</string>
+    <string name="phone_setup">Set up with your phone</string>
     <string name="phone_consent">Create a secure address for this TV. Lancert publishes its local IP in DNS. By continuing, you agree to the Lancert and Let’s Encrypt terms (lancert.dev/terms and letsencrypt.org/repository). Your login goes directly to this TV.</string>
     <string name="phone_start">Continue</string>
     <string name="phone_preparing">Preparing a secure connection… The first setup can take a few minutes.</string>

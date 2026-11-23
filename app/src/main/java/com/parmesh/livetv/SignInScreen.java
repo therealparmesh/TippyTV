@@ -37,7 +37,14 @@ final class SignInScreen {
     private Future<?> pending;
     private Runnable poll;
     private int generation;
-    private boolean onServerPage;
+
+    private enum Step {
+        SOURCES,
+        SERVER,
+        SIGN_IN
+    }
+
+    private Step step;
 
     SignInScreen(MainActivity activity, ExecutorService accounts, String device, String server) {
         this.activity = activity;
@@ -46,13 +53,29 @@ final class SignInScreen {
         this.server = server;
     }
 
-    void show(String message, boolean signingOut) {
-        serverPage(message, signingOut, server.isBlank());
+    void sources(String message, boolean signingOut, boolean returnToJellyfin) {
+        cancel();
+        step = Step.SOURCES;
+        page(R.string.add_profile, R.string.choose_source_description);
+        Button saved =
+                activity.hasSavedProfiles()
+                        ? action(R.string.saved_profiles, true, activity::profiles)
+                        : null;
+        Button phone = action(R.string.phone_setup, saved == null, activity::openPhoneSetup);
+        Button jellyfin = action(R.string.source_jellyfin, false, this::changeServer);
+        action(R.string.source_xtream, false, () -> activity.addPlaylist(true));
+        action(R.string.source_playlist, false, () -> activity.addPlaylist(false));
+        if (signingOut) {
+            for (int i = 0; i < card.getChildCount(); i++) card.getChildAt(i).setEnabled(false);
+        }
+        status(message, signingOut);
+        Button initial = returnToJellyfin ? jellyfin : saved == null ? phone : saved;
+        present(signingOut ? null : initial);
     }
 
-    private void serverPage(String message, boolean signingOut, boolean focusAddress) {
+    void serverPage(String message, boolean focusAddress) {
         cancel();
-        onServerPage = true;
+        step = Step.SERVER;
         page(R.string.connect_heading, R.string.connect_description);
         EditText address =
                 field(
@@ -63,16 +86,12 @@ final class SignInScreen {
         address.setImeOptions(EditorInfo.IME_ACTION_NEXT | EditorInfo.IME_FLAG_NO_EXTRACT_UI);
         Button quick = action(R.string.quick_connect, true, null);
         Button password = action(R.string.use_password, false, null);
-        action(R.string.phone_setup, false, activity::openPhoneSetup).setEnabled(!signingOut);
-        action(R.string.profiles, false, activity::profiles).setEnabled(!signingOut);
         address.setOnEditorActionListener(
                 (view, action, event) -> {
                     if (action != EditorInfo.IME_ACTION_NEXT || !quick.isEnabled()) return false;
                     if (rememberAddress(address)) quick.requestFocus();
                     return true;
                 });
-        quick.setEnabled(!signingOut);
-        password.setEnabled(!signingOut);
         quick.setOnClickListener(
                 view -> {
                     if (!rememberAddress(address)) return;
@@ -83,17 +102,23 @@ final class SignInScreen {
                     if (rememberAddress(address)) passwordPage();
                 });
         status(message, false);
-        present(signingOut ? null : focusAddress ? address : quick);
+        present(focusAddress ? address : quick);
     }
 
     boolean back() {
-        if (onServerPage) return false;
-        show("", false);
-        return true;
+        if (step == Step.SIGN_IN) {
+            serverPage("", false);
+            return true;
+        }
+        if (step == Step.SERVER && !activity.getIntent().getBooleanExtra("addAccount", false)) {
+            sources("", false, true);
+            return true;
+        }
+        return false;
     }
 
     private void changeServer() {
-        serverPage("", false, true);
+        serverPage("", true);
     }
 
     void cancel() {
@@ -129,7 +154,7 @@ final class SignInScreen {
         try {
             server = Jellyfin.serverUrl(server).toString();
         } catch (IllegalArgumentException invalid) {
-            serverPage(invalid.getMessage(), false, true);
+            serverPage(invalid.getMessage(), true);
             return;
         }
         if (form.optString("method").equals("quick")) startCode();
@@ -145,7 +170,7 @@ final class SignInScreen {
 
     private void passwordPage(String submittedPassword) {
         cancel();
-        onServerPage = false;
+        step = Step.SIGN_IN;
         page(R.string.password_heading, 0);
         EditText user =
                 field(
@@ -229,7 +254,7 @@ final class SignInScreen {
 
     private void startCode() {
         cancel();
-        onServerPage = false;
+        step = Step.SIGN_IN;
         page(R.string.quick_connect, R.string.quick_connect_description);
         TextView code = activity.text("", 40, MainActivity.TEXT);
         code.setTypeface(Typeface.MONOSPACE, Typeface.BOLD);
@@ -393,7 +418,7 @@ final class SignInScreen {
             card.addView(
                     activity.text(activity.getString(description), 16, MainActivity.DIM),
                     spaced(-2, 6));
-        if (!onServerPage) {
+        if (step == Step.SIGN_IN) {
             TextView address = activity.text(server, 15, MainActivity.ACCENT);
             address.setSingleLine();
             address.setEllipsize(TextUtils.TruncateAt.MIDDLE);
@@ -417,6 +442,7 @@ final class SignInScreen {
         row.addView(feedback, new LinearLayout.LayoutParams(0, -2, 1));
         card.addView(row, spaced(-2, 9));
         ScrollView scroll = new ScrollView(activity);
+        scroll.setFocusable(false);
         scroll.setVerticalScrollBarEnabled(false);
         scroll.addView(card);
         root.addView(scroll, new FrameLayout.LayoutParams(activity.dp(530), -2, Gravity.CENTER));
@@ -430,7 +456,13 @@ final class SignInScreen {
                     }
                 });
         activity.showScreen(root);
-        if (target != null) target.requestFocusFromTouch();
+        if (target != null) {
+            target.requestFocusFromTouch();
+            target.post(
+                    () -> {
+                        if (target.isShown() && !card.hasFocus()) target.requestFocusFromTouch();
+                    });
+        }
     }
 
     private void status(String message, boolean busy) {

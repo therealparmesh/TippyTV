@@ -24,11 +24,11 @@ When a saved lineup is available, you can browse and tune channels while the TV 
 | Xtream | A profile name, your provider’s base URL (including any port or path), username, and password. TippyTV reads the live-channel API and falls back to the M3U export if needed. |
 | Playlist | A profile name, an M3U URL, and optionally an XMLTV guide URL. For a GitHub Gist, paste its page URL and select the playlist and guide files. |
 
-To add an Xtream account or playlist with the remote, open **Profiles** on the sign-in screen. Choose **Add playlist** for a custom provider lineup. To change sources later, choose **Profile → Switch profile**.
+On the **Add a profile** screen, choose **Set up with your phone**, **Jellyfin**, **Xtream**, or **M3U playlist**. To switch or add another source later, open **Profile → Switch profile**.
 
 ### Set up with your phone
 
-Choose **Set up with phone → Continue**, then scan the QR code on the same Wi-Fi network. Enter your details and select **Continue on TV**. Finish any approval or file selection on the TV.
+Choose **Set up with your phone → Continue**, then scan the QR code on the same Wi-Fi network. Enter your details and select **Continue on TV**. Finish any approval or file selection on the TV.
 
 The TV hosts the HTTPS page. First-time certificate setup needs internet access and may take several minutes. The QR code is valid for 15 minutes. Submitting, canceling, leaving the app, or losing the TV’s local address closes the listener. Certificate keys stay on the TV. [Lancert terms](https://lancert.dev/terms) · [Let’s Encrypt agreements](https://letsencrypt.org/repository/)
 
