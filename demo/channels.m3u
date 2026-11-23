@@ -1,5 +1,5 @@
 #EXTM3U
 #EXTINF:-1 tvg-id="violet" tvg-chno="1",Violet Studio
-https://therealparmesh.github.io/TippyTV/demo/violet.mp4
+violet.m3u8
 #EXTINF:-1 tvg-id="meadow" tvg-chno="2",Meadow Studio
-https://therealparmesh.github.io/TippyTV/demo/meadow.mp4
+meadow.m3u8
