@@ -1753,6 +1753,18 @@ public final class MainActivity extends ComponentActivity {
         dialog.show(initial);
     }
 
+    void showPrivacyPolicy() {
+        TvDialog dialog = new TvDialog(this, getString(R.string.privacy_policy));
+        TextView policy = text(
+                TextUtils.join("\n\n", getResources().getStringArray(R.array.privacy_policy_sections)),
+                17,
+                TEXT);
+        var scroll = dialog.scroll(policy, 280);
+        scroll.setFocusable(true);
+        dialog.add(button(R.string.close, dialog::dismiss), 8);
+        dialog.show(scroll);
+    }
+
     private void serverDialog() {
         if (api == null) return;
         TvDialog dialog = new TvDialog(this, getString(R.string.server));
@@ -1793,6 +1805,7 @@ public final class MainActivity extends ComponentActivity {
                     renderFilter(false);
                 });
         dialog.add(filter, 8);
+        dialog.add(button(R.string.privacy_policy, this::showPrivacyPolicy), 8);
         dialog.add(button(R.string.close, dialog::dismiss), 8);
         dialog.add(
                 dialog.action(

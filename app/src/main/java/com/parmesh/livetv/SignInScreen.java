@@ -65,6 +65,7 @@ final class SignInScreen {
         Button jellyfin = action(R.string.source_jellyfin, false, this::changeServer);
         action(R.string.source_xtream, false, () -> activity.addPlaylist(true));
         action(R.string.source_playlist, false, () -> activity.addPlaylist(false));
+        action(R.string.privacy_policy, false, activity::showPrivacyPolicy);
         if (signingOut) {
             for (int i = 0; i < card.getChildCount(); i++) card.getChildAt(i).setEnabled(false);
         }
