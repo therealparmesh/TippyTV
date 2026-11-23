@@ -797,12 +797,10 @@ public final class MainActivity extends ComponentActivity {
                             if (server instanceof PlaylistSource) {
                                 snapshot = page.channels();
                             } else {
-                                int priorSize = accumulated.size();
-                                for (Channels.Channel c : page.channels())
-                                    accumulated.put(c.id(), c);
-                                if (!done && accumulated.size() == priorSize) {
-                                    throw new java.io.IOException(
-                                            "Channel paging did not advance.");
+                                for (Channels.Channel c : page.channels()) {
+                                    if (accumulated.putIfAbsent(c.id(), c) != null)
+                                        throw new java.io.IOException(
+                                                "Jellyfin repeated a channel.");
                                 }
                                 if (!done && (replace || pages++ % 3 != 0)) continue;
                                 snapshot = List.copyOf(accumulated.values());

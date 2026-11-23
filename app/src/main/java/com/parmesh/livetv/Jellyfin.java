@@ -265,7 +265,8 @@ final class Jellyfin implements TvSource {
         List<Channels.Channel> channels = new ArrayList<>(items.length());
         for (int i = 0; i < items.length(); i++) {
             JSONObject item = items.optJSONObject(i);
-            if (item == null || str(item, "Id").isBlank()) continue;
+            if (item == null || str(item, "Id").isBlank())
+                throw new IOException("Jellyfin returned a channel without an ID.");
             JSONObject userData = item.optJSONObject("UserData");
             String name = str(item, "Name");
             channels.add(
@@ -281,7 +282,9 @@ final class Jellyfin implements TvSource {
         }
         int next = start + items.length();
         int total = result.optInt("TotalRecordCount", -1);
-        boolean more = items.length() > 0 && (total >= 0 ? next < total : items.length() >= limit);
+        if (items.length() == 0 && next < total)
+            throw new IOException("Jellyfin returned an incomplete channel list.");
+        boolean more = total >= 0 ? next < total : items.length() >= limit;
         return new Page(channels, more ? next : -1);
     }
 

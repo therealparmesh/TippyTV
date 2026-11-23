@@ -14,7 +14,7 @@ adb install -r tippytv-1.0.0.apk
 
 Open TippyTV and add your first profile. On later launches, the app opens the last profile you used.
 
-When a saved lineup is available, you can browse and tune channels while the TV checks for changes. A failed refresh keeps the last complete lineup. Programme listings load as you browse and stay in memory for the session.
+When a saved lineup is available, you can browse and tune channels while the TV checks for changes. If the source is temporarily unavailable or Jellyfin sends incomplete channel pages, the last complete lineup stays available. If Jellyfin rejects your sign-in or revokes Live TV access, the TV clears that saved lineup. Programme listings load as you browse and stay in memory for the session.
 
 ## Connect a source
 
@@ -44,7 +44,7 @@ The TV hosts the HTTPS page. First-time certificate setup needs internet access 
 | Read the guide | Open **Guide**. **Earlier** and **Later** move three hours at a time. **Now** returns to the current window. |
 | Watch two channels | Hold **Select** on a second channel and choose **Play in inset**. **Swap** changes which picture has audio. **Close inset** releases the second stream. |
 
-Jellyfin saves favorites to your server account. Xtream and playlist favorites belong to their profile on the TV. Switching profiles preserves them. Removing a playlist or Xtream profile deletes its local favorites.
+Jellyfin saves favorites to your server account. On cold start, Jellyfin favorites reflect the last saved lineup until the server responds. Xtream and playlist favorites belong to their profile on the TV. Switching profiles preserves them. Removing a playlist or Xtream profile deletes its local favorites.
 
 **Profile → Filter low-quality content** is on by default across profiles on this TV. It uses provider flags and groups, including Jellyfin genres and tags. Turning it off restores hidden channels and their saved favorites. Channel names have no effect on the filter.
 
