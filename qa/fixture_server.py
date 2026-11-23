@@ -21,7 +21,7 @@ state = {
     "open_at_logout": None,
     "replacement": False,
     "guide_failure": False,
-    "channel_failure": False,
+    "channel_failure": "",
     "sequence_offset": 0,
     "rendition": "",
     "silent_start": False,
@@ -38,6 +38,7 @@ state = {
 }
 quick_connect = {}
 lock = threading.Lock()
+channel_changes = threading.Condition(lock)
 channels = [
     {"Id": "a", "Name": "Amber One", "ChannelNumber": "1"},
     {"Id": "b", "Name": "Blue Two", "ChannelNumber": "2"},
@@ -100,18 +101,33 @@ class Handler(BaseHTTPRequestHandler):
             with lock:
                 attempt = quick_connect.get(q.get("secret", [""])[0])
             return self.result(200, attempt) if attempt else self.result(404)
+        if path == "/qa/channels.m3u":
+            if state["channel_failure"] == "outage":
+                return self.result(503)
+            return self.result(
+                200, b'#EXTM3U\n#EXTINF:-1 tvg-id="a",Playlist One\n/a.m3u8\n', "audio/x-mpegurl"
+            )
+        if path == "/qa/guide.xml":
+            now = time.time()
+
+            def stamp(offset):
+                return time.strftime("%Y%m%d%H%M%S +0000", time.gmtime(now + offset))
+
+            title = "Updated programme" if state["channel_failure"] == "outage" else "First programme"
+            guide = f'<tv><programme channel="a" start="{stamp(-600)}" stop="{stamp(600)}"><title>{title}</title></programme></tv>'
+            return self.result(200, guide.encode(), "application/xml")
         if path == "/LiveTv/Channels":
             index = int(q.get("startIndex", ["0"])[0])
             count = int(q.get("limit", ["256"])[0])
-            with lock:
+            with channel_changes:
+                channel_changes.wait_for(lambda: state["channel_failure"] != "hold", timeout=20)
                 token = (
                     self.headers.get("Authorization", "")
                     .split('Token="')[-1]
                     .rstrip('"')
                 )
                 valid = token in state["tokens"]
-                if valid and state["channel_failure"]:
-                    return self.result(503, {})
+                fault = state["channel_failure"]
                 lineup = (
                     [dict(channels[0], Id="replacement"), *channels[1:]]
                     if state["replacement"]
@@ -121,11 +137,15 @@ class Handler(BaseHTTPRequestHandler):
                     {**x, "UserData": {"IsFavorite": x["Id"] in state["favorites"]}}
                     for x in lineup[index : index + count]
                 ]
-            return (
-                self.result(200, {"Items": rows, "TotalRecordCount": len(lineup)})
-                if valid
-                else self.result(401)
-            )
+            if not valid or fault == "expired":
+                return self.result(401)
+            if fault in ("outage", "hold"):
+                return self.result(503, {})
+            if index and fault == "empty":
+                rows = []
+            if index + count >= len(lineup) and fault == "repeat":
+                rows = lineup[: len(rows)]
+            return self.result(200, {"Items": rows, "TotalRecordCount": len(lineup)})
         if path == "/LiveTv/Programs":
             with lock:
                 state["guide"] += 1
@@ -171,7 +191,8 @@ class Handler(BaseHTTPRequestHandler):
                 return self.result(failure, {})
         if path in ("/a.m3u8", "/b.m3u8"):
             with lock:
-                state["encodings"].add(q.get("lease", [""])[0])
+                if q.get("lease"):
+                    state["encodings"].add(q["lease"][0])
                 offset = state["sequence_offset"]
             n = max(4, int((time.time() - start) / 2)) + offset
             file = path[1]
@@ -282,8 +303,6 @@ class Handler(BaseHTTPRequestHandler):
             )
             with lock:
                 valid = token in state["tokens"]
-                if valid and state["channel_failure"]:
-                    return self.result(503, {})
                 if valid:
                     state["tokens"].remove(token)
                     state["logouts"] += 1
@@ -342,9 +361,17 @@ class Handler(BaseHTTPRequestHandler):
             with lock:
                 state["media_failure"] = status
             return self.result(204)
-        if path in ("/qa/guide_failure", "/qa/channel_failure"):
+        if path == "/qa/channel_failure":
+            mode = q.get("mode", ["outage"])[0] if q.get("enabled") != ["0"] else ""
+            if mode not in ("", "outage", "empty", "repeat", "hold", "expired"):
+                return self.result(400, {})
+            with channel_changes:
+                state["channel_failure"] = mode
+                channel_changes.notify_all()
+            return self.result(204)
+        if path == "/qa/guide_failure":
             with lock:
-                state[path.split("/")[-1]] = q.get("enabled", ["1"])[0] == "1"
+                state["guide_failure"] = q.get("enabled", ["1"])[0] == "1"
             return self.result(200, {})
         if path == "/qa/replacement":
             with lock:

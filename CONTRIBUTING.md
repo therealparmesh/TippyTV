@@ -10,7 +10,7 @@ python3 tools/prepare-phone.py
 ./gradlew :app:assembleDebug
 ```
 
-The APK is written to `app/build/outputs/apk/debug/app-debug.apk`. The preparation scripts verify the pinned native dependencies, run the phone helper’s submission test, and prepare libraries for both TV architectures. See the [playback dependency guide](third_party/mpv/README.md) for upstream revisions and rebuild instructions.
+The APK is written to `app/build/outputs/apk/debug/app-debug.apk`. The two Python scripts run on the build machine. `prepare-mpv.py` verifies and extracts the pinned player libraries. `prepare-phone.py` tests the HTTPS setup helper and compiles it for both TV architectures. See the [playback dependency guide](third_party/mpv/README.md) for upstream revisions and rebuild instructions.
 
 ## Run the checks
 
@@ -18,7 +18,7 @@ The APK is written to `app/build/outputs/apk/debug/app-debug.apk`. The preparati
 ./gradlew :app:testDebugUnitTest :app:lintDebug :app:lintRelease
 ```
 
-To exercise remote navigation, guide access, stream recovery, and two-channel playback, install the debug APK on a dedicated emulator. The check replaces its app session. With FFmpeg installed, generate sample streams and start the fixture:
+To exercise remote navigation, guide access, lineup recovery, stream recovery, and two-channel playback, install the debug APK on a dedicated emulator. The check replaces its app session and verifies that a saved playlist can still tune a channel and fetch fresh listings during a lineup outage. With FFmpeg installed, generate sample streams and start the local test server:
 
 ```sh
 qa/make-media.sh

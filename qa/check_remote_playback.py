@@ -60,6 +60,26 @@ def nodes():
     raise AssertionError("Could not capture a fresh UI hierarchy")
 
 
+def expect_text(*labels):
+    for _ in range(10):
+        tree = nodes()
+        visible = {node.get("text") for node in tree}
+        if visible.issuperset(labels):
+            return next(node for node in tree if node.get("text") == labels[0])
+    raise AssertionError(f"Expected {labels}, saw {sorted(filter(None, visible))}")
+
+
+def tap_text(label):
+    node = expect_text(label)
+    left, top, right, bottom = map(int, re.findall(r"\d+", node.get("bounds")))
+    adb("shell", "input", "tap", str((left + right) // 2), str((top + bottom) // 2))
+
+
+def cold_start():
+    adb("shell", "am", "force-stop", "com.parmesh.livetv")
+    adb("shell", "am", "start", "-n", "com.parmesh.livetv/.MainActivity")
+
+
 def label(node):
     return (
         node.get("text")
@@ -197,15 +217,13 @@ adb(
     "'cat > files/qa-session.json'",
     data=seed,
 )
-adb("shell", "am", "instrument", "-w", "com.parmesh.livetv/.SeedSession")
+assert b"INSTRUMENTATION_CODE: -1" in adb(
+    "shell", "am", "instrument", "-w", "com.parmesh.livetv/.SeedSession"
+), "Failed to seed the fixture account"
 if args.release_apk:
     adb("install", "--no-incremental", "-r", args.release_apk)
 adb("shell", "am", "start", "-n", "com.parmesh.livetv/.MainActivity")
-for _ in range(10):
-    if any(node.get("text") == "1203 channels" for node in nodes()):
-        break
-else:
-    raise AssertionError("Fixture lineup did not load")
+expect_text("1203 channels")
 
 key(84)
 adb("shell", "input", "text", "zzzznomatch")
@@ -600,13 +618,8 @@ print(
 
 # Exercise overlapping native startup and channel replacement, then background
 # while the last player is still initializing. Only the selected player may survive.
-adb("shell", "am", "force-stop", "com.parmesh.livetv")
-adb("shell", "am", "start", "-n", "com.parmesh.livetv/.MainActivity")
-for _ in range(10):
-    if any(node.get("text") == "1203 channels" for node in nodes()):
-        break
-else:
-    raise AssertionError("Lineup did not reload for rapid tuning")
+cold_start()
+expect_text("1203 channels")
 key(20)
 focused("1  Amber One")
 before_requests = request("/qa/status")["open_requests"]
@@ -628,11 +641,8 @@ print(
 
 # Data can trickle forever without producing a frame. Startup must end in a
 # usable retry state, not an endless buffering/reconnect loop.
-adb("shell", "am", "force-stop", "com.parmesh.livetv")
-adb("shell", "am", "start", "-n", "com.parmesh.livetv/.MainActivity")
-for _ in range(10):
-    if any(n.get("text") == "1203 channels" for n in nodes()):
-        break
+cold_start()
+expect_text("1203 channels")
 request("/qa/silent_start", {})
 key(20)
 key(23)
@@ -657,17 +667,53 @@ print(
 )
 
 
-# A failed cold-start refresh must keep the last complete lineup browsable.
-request("/qa/channel_failure", {})
+# A failed or incomplete refresh must keep the last complete lineup on disk.
 try:
-    adb("shell", "am", "force-stop", "com.parmesh.livetv")
-    adb("shell", "am", "start", "-n", "com.parmesh.livetv/.MainActivity")
-    for _ in range(10):
-        labels = {node.get("text") for node in nodes()}
-        if {"1203 channels · Refresh needed", "1  Amber One"} <= labels:
-            break
-    else:
-        raise AssertionError("Failed refresh lost the saved lineup")
+    for fault in ("empty", "repeat", "outage"):
+        request("/qa/channel_failure?mode=" + fault, {})
+        cold_start()
+        expect_text("1203 channels · Refresh needed", "1  Amber One")
 finally:
     request("/qa/channel_failure?enabled=0", {})
-print("PASS: cold start retains saved channels during a provider outage", flush=True)
+print("PASS: incomplete pages and outages preserve the complete saved lineup", flush=True)
+
+# Playlist and Xtream profiles share a snapshot format containing stream and guide IDs.
+tap_text("Profile")
+tap_text("Switch profile")
+tap_text("M3U playlist")
+base = f"http://10.0.2.2:{args.port}/qa"
+for label, value in (
+    ("Profile name", "Fixture"),
+    ("Playlist URL or Gist", base + "/channels.m3u"),
+    ("Guide URL or Gist (optional)", base + "/guide.xml"),
+):
+    tap_text(label)
+    adb("shell", "input", "text", value)
+    if b"mInputShown=true" in adb("shell", "dumpsys", "input_method"):
+        key(4)
+tap_text("Continue")
+expect_text("Playlist One", "Now · First programme")
+try:
+    request("/qa/channel_failure?mode=outage", {})
+    cold_start()
+    expect_text("1 channel · Refresh needed", "Now · Updated programme")
+    tap_text("Playlist One")
+    for _ in range(30):
+        if b"TippyMPV main status=LIVE " in adb("shell", "dumpsys", "activity", "com.parmesh.livetv"):
+            break
+        time.sleep(0.5)
+    else:
+        raise AssertionError("Could not tune the stream from the saved playlist")
+
+    request("/qa/channel_failure?mode=hold", {})
+    tap_text("Profile")
+    tap_text("Switch profile")
+    tap_text(f"{session['User']['Id']} · http://10.0.2.2:{args.port}")
+    expect_text("1203 channels · Loading…")
+    tap_text("Profile")
+    expect_text("Switch profile")
+    request("/qa/channel_failure?mode=expired", {})
+    expect_text("Add a profile", "M3U playlist")
+finally:
+    request("/qa/channel_failure?enabled=0", {})
+print("PASS: saved playlist tunes with fresh guide listings; expired Jellyfin profile closes its menu", flush=True)
