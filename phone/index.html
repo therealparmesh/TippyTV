@@ -1,0 +1,60 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>TippyTV · Phone setup</title>
+    <link rel="stylesheet" href="dracula.css" />
+    <link rel="stylesheet" href="style.css" />
+    <script defer src="setup.js"></script>
+  </head>
+  <body>
+    <main>
+      <header>TippyTV</header>
+      <h1>Add a profile</h1>
+      <form id="setup">
+        <label
+          >Source<select id="method">
+            <option value="quick">Jellyfin · Quick Connect</option>
+            <option value="jellyfin">Jellyfin · Password</option>
+            <option value="xtream">Xtream</option>
+            <option value="playlist">Playlist or Gist</option>
+          </select></label
+        >
+        <label hidden>Profile name<input id="name" maxlength="160" /></label>
+        <label
+          ><span id="addressLabel">Server address</span
+          ><input
+            id="address"
+            required
+            inputmode="url"
+            autocapitalize="none"
+            spellcheck="false"
+        /></label>
+        <label hidden
+          >Username<input
+            id="user"
+            autocapitalize="none"
+            spellcheck="false"
+            autocomplete="username"
+        /></label>
+        <label hidden
+          >Password<input
+            id="password"
+            type="password"
+            autocomplete="current-password"
+        /></label>
+        <label hidden
+          >Guide URL or Gist (optional)<input
+            id="guide"
+            inputmode="url"
+            autocapitalize="none"
+            spellcheck="false"
+        /></label>
+        <p id="message" role="status"></p>
+        <button type="submit">Continue on TV</button
+        ><button type="button" id="cancel">Cancel</button>
+      </form>
+    </main>
+  </body>
+</html>

@@ -1,0 +1,62 @@
+# TippyTV
+
+Watch live TV from Jellyfin, Xtream, or an M3U playlist on Amazon Fire TV and Android TV. Search a large lineup by name or number, browse the programme guide, or keep a second channel playing in the corner.
+
+## Install
+
+Download the signed APK from [Releases](https://github.com/therealparmesh/TippyTV/releases/latest). TippyTV supports ARMv7 and ARM64 devices running Android 6.0 or later.
+
+If your TV is connected through Android Debug Bridge (ADB), install or update it with:
+
+```sh
+adb install -r tippytv-1.0.0.apk
+```
+
+Open TippyTV and add your own source. On subsequent launches, it opens your last profile.
+
+## Connect a source
+
+| Source | What you need |
+| --- | --- |
+| Jellyfin | A server address and an account with Live TV access. Choose **Quick Connect** to approve sign-in on another device, or enter your password. |
+| Xtream | A profile name, your provider’s base URL (including any port or path), username, and password. TippyTV reads the live-channel API and falls back to the M3U export if needed. |
+| Playlist | A profile name, an M3U URL, and optionally an XMLTV guide URL. For a GitHub Gist, paste its page URL and select the playlist and guide files. |
+
+To add an Xtream account or playlist with the remote, open **Profiles** on the sign-in screen. Choose **Add playlist** for a custom provider lineup. To change sources later, choose **Profile → Switch profile**.
+
+### Set up with your phone
+
+Choose **Set up with phone → Continue**, then scan the QR code on the same Wi-Fi network. Enter your details and select **Continue on TV**. Finish any approval or file selection on the TV.
+
+The TV hosts the HTTPS page. First-time certificate setup needs internet access and may take several minutes. The QR code is valid for 15 minutes. Submitting, canceling, leaving the app, or losing the TV’s local address closes the listener. Certificate keys stay on the TV. [Lancert terms](https://lancert.dev/terms) · [Let’s Encrypt agreements](https://letsencrypt.org/repository/)
+
+## Use the remote
+
+| To… | Use… |
+| --- | --- |
+| Watch a channel | Press **Select** for the preview. Press it again for full screen. |
+| Show controls or leave full screen | Press a direction or **Select** for controls. Press **Back** for the browser. |
+| Pause or resume | Press **Play/Pause**, or choose **Pause** or **Resume live**. |
+| Find a channel | Use **Search** for names or numbers and **Jump** for letters or list endpoints. Press **Left** from the list for **−50** and **+50**. Skip repeatedly, then press **Up** to focus the destination. |
+| Save a favorite | Hold **Select** and choose **Add favorite**. Switch between **Favorites** and **All channels** to change views and clear the search. |
+| Read the guide | Open **Guide**. **Earlier** and **Later** move three hours at a time. **Now** returns to the current window. |
+| Watch two channels | Hold **Select** on a second channel and choose **Play in inset**. **Swap** changes which picture has audio. **Close inset** releases the second stream. |
+
+Jellyfin saves favorites to your server account. Xtream and playlist favorites belong to their profile on the TV. Switching profiles preserves them. Removing a playlist or Xtream profile deletes its local favorites.
+
+**Profile → Filter low-quality content** is on by default across profiles on this TV. It uses provider flags and groups, including Jellyfin genres and tags. Turning it off restores hidden channels and their saved favorites. Channel names have no effect on the filter.
+
+## Troubleshooting
+
+- **Phone setup page won’t open.** Put both devices on the same local network. Guest Wi-Fi isolation, a VPN, or DNS rebinding protection can prevent the phone from reaching the TV. Remote setup is also available.
+- **Server won’t connect.** Check the address and port, and grant local network access if prompted. A Jellyfin `.local` hostname requires multicast DNS. For Xtream, enter the base address, such as `https://tv.example:8443`.
+- **Channels load but the guide is empty.** Check that listings cover the selected time. An Xtream channel’s `epg_channel_id` or M3U entry’s `tvg-id` must match the XMLTV channel ID.
+- **Playback stops.** Choose **Try again**. For Jellyfin, **Try a compatible stream** requests H.264/AAC conversion if your server permits it. Xtream and M3U use the provider’s stream directly.
+
+## Development
+
+For build requirements, test commands, and the commit convention, see [Contributing](CONTRIBUTING.md).
+
+## License
+
+TippyTV is licensed under [GPL-3.0-only](LICENSE). See the [native dependency notes](third_party/mpv/README.md) and [Dracula CSS license](phone/Dracula-LICENSE.txt) for bundled components.

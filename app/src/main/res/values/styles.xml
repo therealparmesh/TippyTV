@@ -1,0 +1,11 @@
+<resources>
+    <string name="app_name">TippyTV</string>
+    <style name="AppTheme" parent="android:style/Theme.Material.NoActionBar">
+        <item name="android:fontFamily">sans</item>
+        <item name="android:windowBackground">#282A36</item>
+        <item name="android:colorAccent">#BD93F9</item>
+        <item name="android:colorBackground">#282A36</item>
+        <item name="android:windowFullscreen">true</item>
+        <item name="android:windowActionModeOverlay">true</item>
+    </style>
+</resources>

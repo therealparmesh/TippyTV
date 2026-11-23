@@ -1,0 +1,3 @@
+<resources>
+    <item type="drawable" name="app_icon">@drawable/banner</item>
+</resources>

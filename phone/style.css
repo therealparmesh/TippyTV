@@ -1,0 +1,60 @@
+* {
+  box-sizing: border-box;
+}
+[hidden] {
+  display: none;
+}
+body {
+  color-scheme: dark;
+  margin: 0;
+  padding: 2rem 1.25rem;
+  background: var(--drac-bg);
+  color: var(--drac-fg);
+  font:
+    1rem/1.5 system-ui,
+    sans-serif;
+}
+main {
+  max-width: 26rem;
+  margin: auto;
+}
+header {
+  color: var(--drac-purple);
+  font-weight: 700;
+}
+h1 {
+  margin: 0.6rem 0 1.25rem;
+}
+label {
+  display: block;
+  margin-bottom: 1rem;
+}
+input,
+select,
+button {
+  display: block;
+  width: 100%;
+  min-height: 3rem;
+  border: 1px solid var(--drac-comment);
+  border-radius: 0.5rem;
+  padding: 0.6rem 0.8rem;
+  background: var(--drac-ui-bg-dark);
+  color: inherit;
+  font: inherit;
+}
+input,
+select {
+  margin-top: 0.25rem;
+}
+:focus-visible {
+  outline: 3px solid var(--drac-cyan);
+  outline-offset: 2px;
+}
+button {
+  margin-top: 0.6rem;
+  font-weight: 600;
+}
+button[type="submit"] {
+  background: var(--drac-purple);
+  color: var(--drac-bg);
+}
