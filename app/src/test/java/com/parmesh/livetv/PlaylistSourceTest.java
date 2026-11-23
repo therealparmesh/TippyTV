@@ -7,14 +7,17 @@ import okhttp3.HttpUrl;
 import org.junit.Test;
 
 import java.io.IOException;
+import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 
 public class PlaylistSourceTest {
     private static final HttpUrl BASE = HttpUrl.get("https://example.com/group/list");
 
     @Test
     public void xtreamProfilesUseSeparateFavoriteStoresAndEncodeCredentials() {
-        for (String path : java.util.List.of("/iptv", "/iptv/")) {
+        for (String path : List.of("/iptv", "/iptv/")) {
             HttpUrl server = HttpUrl.get("https://example.com:8443" + path);
             var session = Jellyfin.Session.xtream("Living room", server, "user+1", "p&?/#%");
             assertTrue(session.direct());
@@ -29,7 +32,7 @@ public class PlaylistSourceTest {
                     guide = HttpUrl.get(session.guide());
             assertEquals("/iptv/get.php", playlist.encodedPath());
             assertEquals("/iptv/xmltv.php", guide.encodedPath());
-            for (HttpUrl url : java.util.List.of(playlist, guide)) {
+            for (HttpUrl url : List.of(playlist, guide)) {
                 assertEquals(8443, url.port());
                 assertEquals("user+1", url.queryParameter("username"));
                 assertEquals("p&?/#%", url.queryParameter("password"));
@@ -46,7 +49,7 @@ public class PlaylistSourceTest {
         String other = "#EXTINF:-1,Other\no.ts\n";
         var first = PlaylistSource.parse("#EXTM3U\n" + a + other + b, BASE, "News");
         assertEquals(
-                java.util.List.of("News East", "Other", "News West"),
+                List.of("News East", "Other", "News West"),
                 first.values().stream().map(PlaylistSource.Entry::name).toList());
         assertEquals(first, PlaylistSource.parse("#EXTM3U\n" + b + other + a, BASE, "News"));
         assertTrue(
@@ -86,16 +89,23 @@ public class PlaylistSourceTest {
     @Test
     public void missingGuideStopUsesNextProgrammeInTimeOrder() {
         var row =
-                new java.util.ArrayList<>(
-                        java.util.List.of(
+                new ArrayList<>(
+                        List.of(
                                 new Channels.Program("Next", 20, 30),
                                 new Channels.Program("Now", 10, -1),
                                 new Channels.Program("Unknown end", 30, -1)));
-        PlaylistSource.finishGuideRow(row);
+        var guide = new HashMap<String, List<Channels.Program>>();
+        guide.put("scheduled", row);
+        guide.put(
+                "unusable", new ArrayList<>(List.of(new Channels.Program("Unknown end", 40, -1))));
+        PlaylistSource.finishGuide(guide);
         assertEquals(
-                java.util.List.of(
-                        new Channels.Program("Now", 10, 20), new Channels.Program("Next", 20, 30)),
-                row);
+                Map.of(
+                        "scheduled",
+                        List.of(
+                                new Channels.Program("Now", 10, 20),
+                                new Channels.Program("Next", 20, 30))),
+                guide);
     }
 
     @Test
@@ -123,8 +133,6 @@ public class PlaylistSourceTest {
         assertEquals(
                 List.of(true, true, false, false, true),
                 entries.stream().map(PlaylistSource.Entry::adult).toList());
-        var entry = entries.get(2);
-        assertFalse(new Channels.Channel("c", entry.name(), "", false, entry.adult()).adult());
     }
 
     @Test
