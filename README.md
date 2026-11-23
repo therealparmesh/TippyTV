@@ -62,4 +62,4 @@ For build requirements, test commands, and the commit convention, see [Contribut
 
 ## License
 
-TippyTV is licensed under [GPL-3.0-only](LICENSE). See the [native dependency notes](third_party/mpv/README.md) and [Dracula CSS license](phone/Dracula-LICENSE.txt) for bundled components.
+TippyTV’s original source code is available under the [MIT License](LICENSE). The APK includes GPL-enabled mpv and FFmpeg libraries, so the combined application is distributed under [GPLv3](app/src/main/assets/licenses/GPL-3.0.txt). Third-party components retain their own notices. See the [native dependency notes](third_party/mpv/README.md) and [Dracula CSS license](phone/Dracula-LICENSE.txt).
