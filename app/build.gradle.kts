@@ -1,4 +1,4 @@
-plugins { id("com.android.application") version "9.5.2" }
+plugins { id("com.android.application") version "9.5.3" }
 
 android {
     namespace = "com.parmesh.livetv"
