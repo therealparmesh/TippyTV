@@ -220,9 +220,15 @@ adb(
 assert b"INSTRUMENTATION_CODE: -1" in adb(
     "shell", "am", "instrument", "-w", "com.parmesh.livetv/.SeedSession"
 ), "Failed to seed the fixture account"
+adb("shell", "run-as", "com.parmesh.livetv", "sh", "-c", "'rm -f cache/lineup-v1-*'")
 if args.release_apk:
     adb("install", "--no-incremental", "-r", args.release_apk)
-adb("shell", "am", "start", "-n", "com.parmesh.livetv/.MainActivity")
+try:
+    request("/qa/channel_failure?mode=hold", {})
+    cold_start()
+    expect_text("Channels", "Loading channels…")
+finally:
+    request("/qa/channel_failure?enabled=0", {})
 expect_text("1203 channels")
 
 key(84)
@@ -673,9 +679,18 @@ try:
         request("/qa/channel_failure?mode=" + fault, {})
         cold_start()
         expect_text("1203 channels · Refresh needed", "1  Amber One")
+    request("/qa/channel_failure?mode=hold", {})
+    cold_start()
+    expect_text("1203 channels · Refreshing…")
+    tap_text("Jump")
+    tap_text("First channel")
+    focused("1  Amber One")
+    request("/qa/channel_failure?mode=reordered", {})
+    expect_text("1203 channels")
+    focused("1  Amber One")
 finally:
     request("/qa/channel_failure?enabled=0", {})
-print("PASS: incomplete pages and outages preserve the complete saved lineup", flush=True)
+print("PASS: failed refreshes preserve the lineup, and a reorder preserves focus", flush=True)
 
 # Playlist and Xtream profiles share a snapshot format containing stream and guide IDs.
 tap_text("Profile")
@@ -693,27 +708,57 @@ for label, value in (
         key(4)
 tap_text("Continue")
 expect_text("Playlist One", "Now · First programme")
-try:
-    request("/qa/channel_failure?mode=outage", {})
-    cold_start()
-    expect_text("1 channel · Refresh needed", "Now · Updated programme")
-    tap_text("Playlist One")
-    for _ in range(30):
-        if b"TippyMPV main status=LIVE " in adb("shell", "dumpsys", "activity", "com.parmesh.livetv"):
-            break
+
+
+def live_playlist_generation(after=0):
+    for _ in range(50):
+        status = adb("shell", "dumpsys", "activity", "com.parmesh.livetv")
+        match = re.search(rb"TippyMPV main status=LIVE generation=(\d+)", status)
+        if match and int(match[1]) > after:
+            return int(match[1])
         time.sleep(0.5)
-    else:
-        raise AssertionError("Could not tune the stream from the saved playlist")
+    raise AssertionError("Could not play the stream from the saved playlist")
+
+
+try:
+    request("/qa/channel_failure?mode=hold", {})
+    cold_start()
+    expect_text("1 channel · Refreshing…", "Playlist One")
+    tap_text("Playlist One")
+    request("/qa/channel_failure?mode=outage", {})
+    expect_text("1 channel · Refresh needed", "Now · Updated programme")
+    generation = live_playlist_generation()
+    playlist_requests = request("/qa/status")["playlist_requests"]
+    request("/qa/playlist_eof", {})
+    live_playlist_generation(after=generation)
+    assert request("/qa/status")["playlist_requests"] == playlist_requests, (
+        "Reopening a known URL after EOF tried to download the playlist"
+    )
+
+    tap_text("Favorites")
+    expect_text("No favorites yet. Add a channel to find it here.")
+    tap_text("All channels")
+    key(82)
+    tap_text("Add favorite")
+    expect_text("★\u00a0\u00a0Playlist One")
+    request("/qa/channel_failure?mode=changed", {})
+    tap_text("Profile")
+    tap_text("Refresh channels")
+    expect_text("Replacement One", "Select a channel to start watching")
+    tap_text("Favorites")
+    expect_text("No favorites yet. Add a channel to find it here.")
+    tap_text("All channels")
+    expect_text("Replacement One")
 
     request("/qa/channel_failure?mode=hold", {})
     tap_text("Profile")
     tap_text("Switch profile")
     tap_text(f"{session['User']['Id']} · http://10.0.2.2:{args.port}")
-    expect_text("1203 channels · Loading…")
+    expect_text("1203 channels · Refreshing…")
     tap_text("Profile")
     expect_text("Switch profile")
     request("/qa/channel_failure?mode=expired", {})
     expect_text("Add a profile", "M3U playlist")
 finally:
     request("/qa/channel_failure?enabled=0", {})
-print("PASS: saved playlist tunes with fresh guide listings; expired Jellyfin profile closes its menu", flush=True)
+print("PASS: cached playlist plays during refresh; replaced channels lose stale playback and favorites", flush=True)

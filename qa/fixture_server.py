@@ -22,6 +22,8 @@ state = {
     "replacement": False,
     "guide_failure": False,
     "channel_failure": "",
+    "playlist_requests": 0,
+    "playlist_eof": False,
     "sequence_offset": 0,
     "rendition": "",
     "silent_start": False,
@@ -102,18 +104,31 @@ class Handler(BaseHTTPRequestHandler):
                 attempt = quick_connect.get(q.get("secret", [""])[0])
             return self.result(200, attempt) if attempt else self.result(404)
         if path == "/qa/channels.m3u":
-            if state["channel_failure"] == "outage":
+            with channel_changes:
+                state["playlist_requests"] += 1
+                channel_changes.wait_for(
+                    lambda: state["channel_failure"] != "hold", timeout=20
+                )
+                fault = state["channel_failure"]
+            if fault in ("outage", "hold"):
                 return self.result(503)
-            return self.result(
-                200, b'#EXTM3U\n#EXTINF:-1 tvg-id="a",Playlist One\n/a.m3u8\n', "audio/x-mpegurl"
+            lineup = (
+                b'#EXTM3U\n#EXTINF:-1 tvg-id="a",Replacement One\n/b.m3u8\n'
+                if fault == "changed"
+                else b'#EXTM3U\n#EXTINF:-1 tvg-id="a",Playlist One\n/a.m3u8?direct=1\n'
             )
+            return self.result(200, lineup, "audio/x-mpegurl")
         if path == "/qa/guide.xml":
             now = time.time()
 
             def stamp(offset):
                 return time.strftime("%Y%m%d%H%M%S +0000", time.gmtime(now + offset))
 
-            title = "Updated programme" if state["channel_failure"] == "outage" else "First programme"
+            title = (
+                "Updated programme"
+                if state["channel_failure"] in ("hold", "outage")
+                else "First programme"
+            )
             guide = f'<tv><programme channel="a" start="{stamp(-600)}" stop="{stamp(600)}"><title>{title}</title></programme></tv>'
             return self.result(200, guide.encode(), "application/xml")
         if path == "/LiveTv/Channels":
@@ -133,6 +148,8 @@ class Handler(BaseHTTPRequestHandler):
                     if state["replacement"]
                     else channels
                 )
+                if fault == "reordered":
+                    lineup = [lineup[1], lineup[0], *lineup[2:]]
                 rows = [
                     {**x, "UserData": {"IsFavorite": x["Id"] in state["favorites"]}}
                     for x in lineup[index : index + count]
@@ -194,6 +211,9 @@ class Handler(BaseHTTPRequestHandler):
                 if q.get("lease"):
                     state["encodings"].add(q["lease"][0])
                 offset = state["sequence_offset"]
+                playlist_eof = q.get("direct") == ["1"] and state["playlist_eof"]
+                if playlist_eof:
+                    state["playlist_eof"] = False
             n = max(4, int((time.time() - start) / 2)) + offset
             file = path[1]
             if file == "a":
@@ -215,7 +235,7 @@ class Handler(BaseHTTPRequestHandler):
                         f"{file}{i % 12}.ts?lease={q.get('lease', [''])[0]}",
                     ]
                 )
-            if interruption == "ended":
+            if interruption == "ended" or playlist_eof:
                 lines.append("#EXT-X-ENDLIST")
             return self.result(
                 200, ("\n".join(lines) + "\n").encode(), "application/vnd.apple.mpegurl"
@@ -363,11 +383,17 @@ class Handler(BaseHTTPRequestHandler):
             return self.result(204)
         if path == "/qa/channel_failure":
             mode = q.get("mode", ["outage"])[0] if q.get("enabled") != ["0"] else ""
-            if mode not in ("", "outage", "empty", "repeat", "hold", "expired"):
+            if mode not in (
+                "", "outage", "empty", "repeat", "hold", "expired", "changed", "reordered"
+            ):
                 return self.result(400, {})
             with channel_changes:
                 state["channel_failure"] = mode
                 channel_changes.notify_all()
+            return self.result(204)
+        if path == "/qa/playlist_eof":
+            with lock:
+                state["playlist_eof"] = True
             return self.result(204)
         if path == "/qa/guide_failure":
             with lock:

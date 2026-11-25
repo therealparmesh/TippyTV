@@ -18,7 +18,7 @@ The APK is written to `app/build/outputs/apk/debug/app-debug.apk`. The two Pytho
 ./gradlew :app:testDebugUnitTest :app:lintDebug :app:lintRelease
 ```
 
-To exercise remote navigation, guide access, lineup recovery, stream recovery, and two-channel playback, install the debug APK on a dedicated emulator. The check replaces its app session and verifies that a saved playlist can still tune a channel and fetch fresh listings during a lineup outage. With FFmpeg installed, generate sample streams and start the local test server:
+To exercise remote navigation, guide access, lineup recovery, stream recovery, and two-channel playback, install the debug APK on a dedicated emulator. The check replaces its app session and clears its saved lineup. It verifies that cached channels are usable during a refresh and that playback can reconnect during a playlist outage. With FFmpeg installed, generate sample streams and start the local test server:
 
 ```sh
 qa/make-media.sh
@@ -28,7 +28,7 @@ python3 qa/fixture_server.py
 In another terminal, replace the example serial with the one from `adb devices`:
 
 ```sh
-adb -s emulator-5562 install -r app/build/outputs/apk/debug/app-debug.apk
+adb -s emulator-5562 install -r -g app/build/outputs/apk/debug/app-debug.apk
 python3 qa/check_remote_playback.py emulator-5562
 ```
 
