@@ -75,6 +75,7 @@ final class Playback {
         Channels.Channel channel;
         Status status = Status.IDLE;
         boolean fallback;
+        boolean refreshPlaylistOnRetry;
         boolean playWhenReady = true;
         long reconnectDelay;
         long statusSince;
@@ -253,7 +254,12 @@ final class Playback {
             boolean recovering) {
         long generation = ++slot.generation;
         slot.statusSince = SystemClock.elapsedRealtime();
-        if (!recovering) slot.reconnectDelay = 0;
+        if (!recovering) {
+            slot.reconnectDelay = 0;
+            slot.refreshPlaylistOnRetry = false;
+        }
+        boolean refreshSource =
+                recovering && (!(api instanceof PlaylistSource) || slot.refreshPlaylistOnRetry);
         detach(slot);
         slot.api = api;
         slot.channel = channel;
@@ -267,7 +273,7 @@ final class Playback {
                     if (slot.generation != generation) return;
                     Jellyfin.Stream opened;
                     try {
-                        opened = api.open(channel, fallback, small, recovering);
+                        opened = api.open(channel, fallback, small, refreshSource);
                     } catch (Exception error) {
                         ui.post(
                                 () -> {
@@ -381,14 +387,28 @@ final class Playback {
                         boolean started = (state & 4) != 0 && Double.isFinite(position);
                         if (started) progress.sample(position, now);
                         if ((state & 1) != 0) {
-                            if ((state & 8) != 0) streamFailed(slot);
-                            else reconnectLater(slot, 0);
+                            if ((state & 8) != 0) {
+                                streamFailed(slot);
+                            } else {
+                                // After playback, reconnect to the known URL first. Refresh
+                                // the playlist only if an attempt fails before it can play.
+                                slot.refreshPlaylistOnRetry =
+                                        slot.api instanceof PlaylistSource && !progress.started();
+                                reconnectLater(slot, 0);
+                            }
                             return;
                         }
                         if (progress.stalled(now, !slot.playWhenReady)) {
-                            if (progress.started())
+                            if (progress.started()) {
+                                slot.refreshPlaylistOnRetry = false;
                                 request(slot, slot.api, slot.channel, slot.fallback, true);
-                            else streamFailed(slot);
+                            } else if (slot.api instanceof PlaylistSource
+                                    && !slot.refreshPlaylistOnRetry) {
+                                slot.refreshPlaylistOnRetry = true;
+                                reconnectLater(slot, 0);
+                            } else {
+                                streamFailed(slot);
+                            }
                             return;
                         }
                         Status next =

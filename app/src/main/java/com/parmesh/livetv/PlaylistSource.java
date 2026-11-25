@@ -2,6 +2,7 @@ package com.parmesh.livetv;
 
 import android.content.Context;
 import android.content.SharedPreferences;
+import android.os.SystemClock;
 import android.util.JsonReader;
 import android.util.Xml;
 
@@ -23,6 +24,7 @@ import java.util.regex.*;
 import java.util.zip.GZIPInputStream;
 
 final class PlaylistSource implements TvSource {
+    private static final long RECOVERY_REFRESH_MS = 30_000;
     private static final OkHttpClient HTTP =
             new OkHttpClient.Builder()
                     .dns(new LocalDns())
@@ -39,6 +41,9 @@ final class PlaylistSource implements TvSource {
     record Entry(String name, String number, String guide, String url, boolean adult) {}
 
     private volatile Map<String, Entry> entries = Map.of();
+    private final Object lineupLock = new Object();
+    private volatile Map<String, Entry> lastDownload;
+    private long nextRecoveryRefresh;
     private Map<String, List<Channels.Program>> listings = Map.of();
     private volatile Set<String> guideIds = Set.of();
     private Set<String> loadedGuideIds;
@@ -292,9 +297,22 @@ final class PlaylistSource implements TvSource {
     }
 
     public Page channels(int start) throws IOException {
-        Map<String, Entry> loaded = initial != null ? initial : download(profile);
+        Map<String, Entry> loaded = initial != null ? initial : refresh(false);
         initial = null;
         return new Page(channelList(loaded), -1);
+    }
+
+    private Map<String, Entry> refresh(boolean recovering) throws IOException {
+        synchronized (lineupLock) {
+            if (recovering && SystemClock.elapsedRealtime() < nextRecoveryRefresh)
+                return lastDownload;
+            try {
+                lastDownload = download(profile);
+                return lastDownload;
+            } finally {
+                nextRecoveryRefresh = SystemClock.elapsedRealtime() + RECOVERY_REFRESH_MS;
+            }
+        }
     }
 
     Entry entry(String id) {
@@ -325,8 +343,17 @@ final class PlaylistSource implements TvSource {
     public Jellyfin.Stream open(
             Channels.Channel channel, boolean fallback, boolean inset, boolean recovering)
             throws IOException {
-        Entry e = (recovering ? download(profile) : entries).get(channel.id());
-        if (e == null || !e.name().equals(channel.name()))
+        if (recovering) {
+            try {
+                refresh(true);
+            } catch (IOException unavailable) {
+                // A playlist outage can leave its stream URLs working.
+            }
+        }
+        Map<String, Entry> lineup = lastDownload;
+        if (lineup == null) lineup = entries;
+        Entry e = lineup.get(channel.id());
+        if (e == null || !e.name().equals(channel.name()) || e.adult() != channel.adult())
             throw new IllegalStateException("Channel changed. Refresh the channel list.");
         return new Jellyfin.Stream(Jellyfin.nativePlaybackUrl(HttpUrl.get(e.url())), "", "", false);
     }
