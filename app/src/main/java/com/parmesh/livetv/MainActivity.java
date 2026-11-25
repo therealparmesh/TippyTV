@@ -484,7 +484,6 @@ public final class MainActivity extends ComponentActivity {
         buildVideoStage(body, browser);
         showScreen(root);
         queryButton.requestFocusFromTouch();
-        updateCount();
         updateSelection();
         updatePlayback();
         loadCatalog();
@@ -588,7 +587,7 @@ public final class MainActivity extends ComponentActivity {
                 button(
                         R.string.clear_search,
                         () -> {
-                            if (loadProblem != null) loadCatalog();
+                            if (fullLineup.isEmpty() && loadProblem != null) loadCatalog();
                             else if (!query.isBlank()) applySearch("");
                             else {
                                 favoritesOnly = false;
@@ -901,13 +900,29 @@ public final class MainActivity extends ComponentActivity {
     private void reconcilePlayback() {
         List<Channels.Channel> all = visibleLineup();
         player.reconcileChannels(all);
-        if (resumeMain != null && Channels.indexOf(all, resumeMain.id()) < 0) {
+        resumeMain = currentChannel(resumeMain);
+        resumeInset = currentChannel(resumeInset);
+        if (resumeMain == null && resumeInset != null) {
             resumeMain = resumeInset;
             resumeMainPaused = resumeInsetPaused;
             resumeInset = null;
         }
-        if (resumeMain != null && Channels.indexOf(all, resumeMain.id()) < 0) resumeMain = null;
-        if (resumeInset != null && Channels.indexOf(all, resumeInset.id()) < 0) resumeInset = null;
+    }
+
+    private Channels.Channel currentChannel(Channels.Channel channel) {
+        if (channel == null) return null;
+        List<Channels.Channel> lineup = visibleLineup();
+        int position = Channels.indexOf(lineup, channel.id());
+        if (position < 0) return null;
+        Channels.Channel current = lineup.get(position);
+        return profile.direct() && !channel.name().equals(current.name()) ? null : current;
+    }
+
+    private Channels.Channel availableChannel(Channels.Channel channel) {
+        if (api == null || channel == null) return null;
+        Channels.Channel current = currentChannel(channel);
+        if (current == null) toast(getString(R.string.channel_unavailable));
+        return current;
     }
 
     private void rebuildFavorites() {
@@ -939,6 +954,11 @@ public final class MainActivity extends ComponentActivity {
                             () -> {
                                 if (destroyed || api == null || generation != visibleGeneration)
                                     return;
+                                View focus = list.getFocusedChild();
+                                int focusPosition =
+                                        focus == null
+                                                ? RecyclerView.NO_POSITION
+                                                : list.getChildAdapterPosition(focus);
                                 adapter.replaceChannels(filtered);
                                 jumps = index;
                                 int position =
@@ -959,7 +979,7 @@ public final class MainActivity extends ComponentActivity {
                                     focusedPosition = 0;
                                 } else if (resetSelection
                                         || pendingJump != null
-                                        || (position < 0 && list.hasFocus())) {
+                                        || (focus != null && restoredPosition != focusPosition)) {
                                     jump(resetSelection ? 0 : restoredPosition);
                                 } else {
                                     focusedPosition = restoredPosition;
@@ -978,6 +998,9 @@ public final class MainActivity extends ComponentActivity {
 
     private void updateCount() {
         int n = adapter.getItemCount();
+        boolean hasLineup = !fullLineup.isEmpty();
+        boolean canClear = !query.isBlank() || favoritesOnly;
+        boolean canRetry = !hasLineup && loadProblem != null;
         if (jumpButton.hasFocus() && n == 0) queryButton.requestFocusFromTouch();
         String label =
                 getResources()
@@ -985,31 +1008,29 @@ public final class MainActivity extends ComponentActivity {
                                 favoritesOnly ? R.plurals.favorite_count : R.plurals.channel_count,
                                 n,
                                 n);
-        if (catalogBusy) label = getString(R.string.loading_channel_count, label);
-        else if (loadProblem != null && n > 0)
+        if (!hasLineup && (catalogBusy || canRetry)) label = getString(R.string.channels);
+        else if (catalogBusy) label = getString(R.string.refreshing_channel_count, label);
+        else if (loadProblem != null && hasLineup)
             label = getString(R.string.partial_channel_count, label);
         else if (!query.isBlank()) label = getString(R.string.search_channel_count, label, query);
         count.setText(label);
         jumpButton.setEnabled(n > 0);
         emptyState.setVisibility(n == 0 ? View.VISIBLE : View.GONE);
         pager.setVisibility(n == 0 ? View.GONE : View.VISIBLE);
-        boolean canRecover =
-                n == 0
-                        && !catalogBusy
-                        && (loadProblem != null || !query.isBlank() || favoritesOnly);
+        boolean canRecover = n == 0 && (hasLineup || !catalogBusy) && (canRetry || canClear);
         if (!canRecover && emptyAction.hasFocus()) queryButton.requestFocus();
         emptyAction.setVisibility(canRecover ? View.VISIBLE : View.GONE);
         emptyAction.setText(
-                loadProblem != null
+                canRetry
                         ? R.string.retry
                         : !query.isBlank() ? R.string.clear_search : R.string.all_channels);
         queryButton.setNextFocusDownId(canRecover ? emptyAction.getId() : list.getId());
         filterButton.setNextFocusDownId(canRecover ? emptyAction.getId() : list.getId());
         empty.setText(
-                loadProblem != null
+                canRetry
                         ? loadProblem
                         : getString(
-                                catalogBusy
+                                catalogBusy && !hasLineup
                                         ? R.string.loading_channels
                                         : !query.isBlank()
                                                 ? R.string.no_matching_channels
@@ -1148,14 +1169,15 @@ public final class MainActivity extends ComponentActivity {
     }
 
     private void setFavorite(Channels.Channel channel, boolean value) {
-        if (api == null) return;
+        Channels.Channel current = availableChannel(channel);
+        if (current == null) return;
         TvSource server = api;
-        if (!pendingFavorites.add(channel.id())) return;
+        if (!pendingFavorites.add(current.id())) return;
         Runnable save =
                 () -> {
                     boolean ok;
                     try {
-                        server.favorite(channel, value);
+                        server.favorite(current, value);
                         ok = true;
                     } catch (Exception failure) {
                         ok = false;
@@ -1164,12 +1186,12 @@ public final class MainActivity extends ComponentActivity {
                     ui.post(
                             () -> {
                                 if (destroyed || api != server) return;
-                                pendingFavorites.remove(channel.id());
+                                pendingFavorites.remove(current.id());
                                 if (saved) {
                                     favoriteOverrides.put(
-                                            channel.id(),
+                                            current.id(),
                                             new FavoriteEdit(
-                                                    channel.name(), value, ++favoriteRevision));
+                                                    current.name(), value, ++favoriteRevision));
                                     rebuildFavorites();
                                     if (favoritesOnly) renderFilter(false);
                                     else refreshGuideRows();
@@ -1182,7 +1204,9 @@ public final class MainActivity extends ComponentActivity {
         else accounts.execute(save);
     }
 
-    private void channelActions(Channels.Channel channel) {
+    private void channelActions(Channels.Channel selection) {
+        Channels.Channel channel = availableChannel(selection);
+        if (channel == null) return;
         int position = Channels.indexOf(adapter.channels, channel.id());
         if (position >= 0) focusedPosition = position;
         selected = channel;
@@ -1212,15 +1236,20 @@ public final class MainActivity extends ComponentActivity {
         if (!profile.direct())
             dialog.add(
                     dialog.action(
-                            R.string.compatible_stream, () -> player.tuneCompatible(api, channel)),
+                            R.string.compatible_stream,
+                            () -> {
+                                Channels.Channel current = availableChannel(channel);
+                                if (current != null) player.tuneCompatible(api, current);
+                            }),
                     8);
         dialog.show(watch);
     }
 
     private void tune(Channels.Channel channel, boolean small) {
-        if (channel == null || api == null) return;
+        Channels.Channel current = availableChannel(channel);
+        if (current == null) return;
         if (small && player.primary() == null) small = false;
-        player.tune(api, channel, small);
+        player.tune(api, current, small);
     }
 
     private void updatePlaybackDetails() {
@@ -1502,8 +1531,9 @@ public final class MainActivity extends ComponentActivity {
                 R.string.guide_next, clock.format(new Date(program.start())), program.title());
     }
 
-    private void scheduleDialog(Channels.Channel channel) {
-        if (channel == null || api == null) return;
+    private void scheduleDialog(Channels.Channel selection) {
+        Channels.Channel channel = availableChannel(selection);
+        if (channel == null) return;
         TvSource server = api;
         long initial = GuideCache.window(System.currentTimeMillis());
         long step = GUIDE_HOURS * 3_600_000L;

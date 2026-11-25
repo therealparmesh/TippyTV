@@ -65,10 +65,11 @@
     <string name="server">Profile</string>
     <string name="all_channels">All channels</string>
     <string name="search_active">Edit search</string>
-    <string name="loading_channel_count">%1$s · Loading…</string>
+    <string name="refreshing_channel_count">%1$s · Refreshing…</string>
     <string name="partial_channel_count">%1$s · Refresh needed</string>
     <string name="search_channel_count">%1$s · “%2$s”</string>
     <string name="loading_channels">Loading channels…</string>
+    <string name="channel_unavailable">This channel has changed or is no longer available.</string>
     <string name="no_matching_channels">No matches. Try a different name or number.</string>
     <string name="no_favorites">No favorites yet. Add a channel to find it here.</string>
     <string name="quality_filter">Filter low-quality content</string>

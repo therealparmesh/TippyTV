@@ -14,7 +14,7 @@ adb install -r tippytv-1.1.0.apk
 
 Open TippyTV and add your first profile. On later launches, the app opens the last profile you used.
 
-When a saved lineup is available, you can browse and tune channels while the TV checks for changes. If the source is temporarily unavailable or Jellyfin sends incomplete channel pages, the last complete lineup stays available. If Jellyfin rejects your sign-in or revokes Live TV access, the TV clears that saved lineup. Programme listings load as you browse and stay in memory for the session.
+When a saved lineup is available, you can browse and tune channels while the TV checks for changes. The first load without a saved lineup shows a loading message. If the source is unavailable, a playlist has no playable entries, or Jellyfin sends incomplete channel pages, the last complete lineup stays available. A successful refresh removes channels that are gone. If Jellyfin rejects your sign-in or revokes Live TV access, the TV clears that saved lineup. Programme listings load as you browse and stay in memory for the session.
 
 ## Connect a source
 
@@ -45,6 +45,8 @@ The TV hosts the HTTPS page. First-time certificate setup needs internet access 
 | Watch two channels | Hold **Select** on a second channel and choose **Play in inset**. **Swap** changes which picture has audio. **Close inset** releases the second stream. |
 
 Jellyfin saves favorites to your server account. On cold start, Jellyfin favorites reflect the last saved lineup until the server responds. Xtream and playlist favorites belong to their profile on the TV. Switching profiles preserves them. Removing a playlist or Xtream profile deletes its local favorites.
+
+Playlist and Xtream favorites follow the provider's channel identity. If the provider renames a channel, or changes its URL without a unique guide ID, you may need to favorite it again.
 
 **Profile → Filter low-quality content** is on by default across profiles on this TV. It uses provider flags and groups, including Jellyfin genres and tags. Turning it off restores hidden channels and their saved favorites. Channel names have no effect on the filter.
 
