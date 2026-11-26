@@ -792,7 +792,7 @@ public final class MainActivity extends ComponentActivity {
                         }
                     }
                     var accumulated = new LinkedHashMap<String, Channels.Channel>();
-                    int cursor = 0, pages = 0;
+                    int cursor = 0, pages = 0, expectedTotal = -1;
                     try {
                         while (catalogGeneration == generation) {
                             TvSource.Page page = server.channels(cursor);
@@ -803,11 +803,22 @@ public final class MainActivity extends ComponentActivity {
                             if (server instanceof PlaylistSource) {
                                 snapshot = page.channels();
                             } else {
+                                if (page.total() >= 0) {
+                                    if (expectedTotal >= 0 && page.total() != expectedTotal)
+                                        throw new java.io.IOException(
+                                                "Jellyfin changed the lineup while it was loading.");
+                                    expectedTotal = page.total();
+                                }
                                 for (Channels.Channel c : page.channels()) {
                                     if (accumulated.putIfAbsent(c.id(), c) != null)
                                         throw new java.io.IOException(
                                                 "Jellyfin repeated a channel.");
                                 }
+                                if (expectedTotal >= 0
+                                        && (accumulated.size() > expectedTotal
+                                                || (done && accumulated.size() != expectedTotal)))
+                                    throw new java.io.IOException(
+                                            "Jellyfin returned an incomplete channel list.");
                                 if (!done && (replace || pages++ % 3 != 0)) continue;
                                 snapshot = List.copyOf(accumulated.values());
                             }

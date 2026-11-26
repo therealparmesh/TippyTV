@@ -7,8 +7,8 @@ import java.util.List;
 import java.util.Map;
 
 interface TvSource {
-    /** nextStart is -1 when the source has returned its entire lineup. */
-    record Page(List<Channels.Channel> channels, int nextStart) {}
+    /** nextStart is -1 on the last page. total is -1 when the source omits the count. */
+    record Page(List<Channels.Channel> channels, int nextStart, int total) {}
 
     Page channels(int start) throws IOException;
 

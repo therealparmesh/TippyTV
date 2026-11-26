@@ -285,7 +285,7 @@ final class Jellyfin implements TvSource {
         if (items.length() == 0 && next < total)
             throw new IOException("Jellyfin returned an incomplete channel list.");
         boolean more = total >= 0 ? next < total : items.length() >= limit;
-        return new Page(channels, more ? next : -1);
+        return new Page(channels, more ? next : -1, total);
     }
 
     public void favorite(Channels.Channel channel, boolean value) throws IOException {

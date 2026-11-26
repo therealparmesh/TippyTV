@@ -299,7 +299,7 @@ final class PlaylistSource implements TvSource {
     public Page channels(int start) throws IOException {
         Map<String, Entry> loaded = initial != null ? initial : refresh(false);
         initial = null;
-        return new Page(channelList(loaded), -1);
+        return new Page(channelList(loaded), -1, loaded.size());
     }
 
     private Map<String, Entry> refresh(boolean recovering) throws IOException {
