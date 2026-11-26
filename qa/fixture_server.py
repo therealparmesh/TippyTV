@@ -158,6 +158,8 @@ class Handler(BaseHTTPRequestHandler):
                 return self.result(401)
             if fault in ("outage", "hold"):
                 return self.result(503, {})
+            if index and fault == "shrunk":
+                return self.result(200, {"Items": [], "TotalRecordCount": index})
             if index and fault == "empty":
                 rows = []
             if index + count >= len(lineup) and fault == "repeat":
@@ -384,7 +386,7 @@ class Handler(BaseHTTPRequestHandler):
         if path == "/qa/channel_failure":
             mode = q.get("mode", ["outage"])[0] if q.get("enabled") != ["0"] else ""
             if mode not in (
-                "", "outage", "empty", "repeat", "hold", "expired", "changed", "reordered"
+                "", "outage", "empty", "repeat", "hold", "expired", "changed", "reordered", "shrunk"
             ):
                 return self.result(400, {})
             with channel_changes:

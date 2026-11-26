@@ -675,7 +675,7 @@ print(
 
 # A failed or incomplete refresh must keep the last complete lineup on disk.
 try:
-    for fault in ("empty", "repeat", "outage"):
+    for fault in ("empty", "repeat", "shrunk", "outage"):
         request("/qa/channel_failure?mode=" + fault, {})
         cold_start()
         expect_text("1203 channels · Refresh needed", "1  Amber One")
@@ -710,14 +710,16 @@ tap_text("Continue")
 expect_text("Playlist One", "Now · First programme")
 
 
-def live_playlist_generation(after=0):
+def playlist_generation(expected="LIVE", after=0):
     for _ in range(50):
         status = adb("shell", "dumpsys", "activity", "com.parmesh.livetv")
-        match = re.search(rb"TippyMPV main status=LIVE generation=(\d+)", status)
-        if match and int(match[1]) > after:
-            return int(match[1])
+        match = re.search(rb"TippyMPV main status=([A-Z_]+) generation=(\d+)", status)
+        if match and (expected is None or match[1].decode() == expected):
+            generation = int(match[2])
+            if generation > after:
+                return generation
         time.sleep(0.5)
-    raise AssertionError("Could not play the stream from the saved playlist")
+    raise AssertionError(f"Playlist playback did not reach {expected} after generation {after}")
 
 
 try:
@@ -727,10 +729,16 @@ try:
     tap_text("Playlist One")
     request("/qa/channel_failure?mode=outage", {})
     expect_text("1 channel · Refresh needed", "Now · Updated programme")
-    generation = live_playlist_generation()
+    generation = playlist_generation()
     playlist_requests = request("/qa/status")["playlist_requests"]
     request("/qa/playlist_eof", {})
-    live_playlist_generation(after=generation)
+    generation = playlist_generation(after=generation)
+    request("/qa/playlist_eof", {})
+    playlist_generation("RETRY_WAIT", after=generation - 1)
+    wait_started = time.monotonic()
+    generation = playlist_generation(None, after=generation)
+    assert time.monotonic() - wait_started >= 4, "A brief recovery reset the retry delay"
+    playlist_generation(after=generation - 1)
     assert request("/qa/status")["playlist_requests"] == playlist_requests, (
         "Reopening a known URL after EOF tried to download the playlist"
     )
