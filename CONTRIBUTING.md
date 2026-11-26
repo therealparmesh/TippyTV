@@ -1,8 +1,20 @@
 # Contributing to TippyTV
 
-## Build locally
+## Prerequisites
 
-Install JDK 21, Android SDK 37, NDK 28.2.13676358, CMake 3.22.1, Go 1.27, and Python 3. Set `ANDROID_HOME` to your Android SDK directory. From the repository root:
+| Tool | Version |
+| --- | --- |
+| JDK | 21 |
+| Android SDK | 37 |
+| Android NDK | 28.2.13676358 |
+| CMake | 3.22.1 |
+| Go | 1.27 |
+| Python | 3 |
+| FFmpeg | Required for emulator fixtures |
+
+Set `ANDROID_HOME` to your SDK directory and put `adb` on your `PATH`. Run the commands below from the repository root.
+
+## Build
 
 ```sh
 python3 tools/prepare-mpv.py
@@ -10,40 +22,45 @@ python3 tools/prepare-phone.py
 ./gradlew :app:assembleDebug
 ```
 
-The APK is written to `app/build/outputs/apk/debug/app-debug.apk`. The two Python scripts run on the build machine. `prepare-mpv.py` verifies and extracts the pinned player libraries. `prepare-phone.py` tests the HTTPS setup helper and compiles it for both TV architectures. See the [playback dependency guide](third_party/mpv/README.md) for upstream revisions and rebuild instructions.
+The preparation scripts verify and extract the pinned mpv libraries, then test and build the phone setup helper for both TV architectures. The debug APK is at `app/build/outputs/apk/debug/app-debug.apk`. [Native dependency sources and rebuild instructions](third_party/mpv/README.md)
 
-## Run the checks
+## Test
+
+Run the unit tests and lint for both build types.
 
 ```sh
 ./gradlew :app:testDebugUnitTest :app:lintDebug :app:lintRelease
 ```
 
-To exercise remote navigation, guide access, lineup recovery, stream recovery, and two-channel playback, install the debug APK on a dedicated emulator. The check replaces its app session and clears its saved lineup. It verifies that cached channels are usable during a refresh and that playback can reconnect during a playlist outage. With FFmpeg installed, generate sample streams and start the local test server:
+For remote navigation, the guide, and playback recovery, use a dedicated Android emulator. The check replaces its TippyTV session and clears its saved lineup. Generate the local test streams and start the fixture server in one terminal.
 
 ```sh
 qa/make-media.sh
 python3 qa/fixture_server.py
 ```
 
-In another terminal, replace the example serial with the one from `adb devices`:
+In another terminal, replace the example serial with your emulator's serial from `adb devices`.
 
 ```sh
 adb -s emulator-5562 install -r -g app/build/outputs/apk/debug/app-debug.apk
 python3 qa/check_remote_playback.py emulator-5562
 ```
 
-The default fixture address inside the emulator is `http://10.0.2.2:18798`. To use another port, set `JELLYFIN_QA_PORT` when starting the server and pass `--port` to the check.
+The emulator reaches the fixture at `http://10.0.2.2:18798`. For another port, set `JELLYFIN_QA_PORT` on the server and pass the same port with `--port` to the check.
 
-## Commit changes
+## Send a change
 
-Use one [Conventional Commit](https://www.conventionalcommits.org/) per logical change. For example, `fix: preserve focus when returning to the guide` or `docs: clarify playlist setup`.
+Keep each commit focused on one change and use [Conventional Commits](https://www.conventionalcommits.org/). For instance, `fix: preserve focus when closing the guide` describes both the change and where it matters.
 
-## Build a release
+## Release
 
-Update `versionName` and increment `versionCode` in `app/build.gradle.kts`. Run the checks, then build the unsigned release APK:
+Update `versionName` and increment `versionCode` in `app/build.gradle.kts`. Run the checks, then build the unsigned APK.
 
 ```sh
 ./gradlew :app:assembleRelease
 ```
 
-Sign the APK with the existing distribution key so installed copies can update in place. Verify it with `apksigner verify`, then attach the signed APK to the matching GitHub release.
+The unsigned APK is at `app/build/outputs/apk/release/app-release-unsigned.apk`. Sign it with the key for the destination and verify it with `apksigner verify`.
+
+- **GitHub.** Use the existing sideload signing key so installed copies can update in place. Attach the signed APK to the release for the matching tag.
+- **Amazon Appstore.** Use the existing Amazon submission key. Select **Photo & Video → Video Player** and target Fire TVs. Include the public demo and matching source tag in the reviewer instructions. Check the release status in the Developer Console after submitting. [Amazon Appstore categories](https://developer.amazon.com/docs/app-submission/categories)

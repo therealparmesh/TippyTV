@@ -1,67 +1,63 @@
 # TippyTV
 
-Watch live TV from Jellyfin, Xtream, or an M3U playlist on Amazon Fire TV and Android TV. Search a large lineup by name or number, browse the programme guide, or keep a second channel playing in the corner.
+TippyTV is a live TV player for Amazon Fire TV and Android TV. Bring a Jellyfin server, Xtream account, or M3U playlist. Use the remote to find a channel, see what's on, or keep a second stream in the corner.
 
-## Install
+## Quick start
 
-Download the signed APK from [Releases](https://github.com/therealparmesh/TippyTV/releases/latest). TippyTV supports ARMv7 and ARM64 devices running Android 6.0 or later.
+1. Download the signed APK from [GitHub Releases](https://github.com/therealparmesh/TippyTV/releases/latest). TippyTV supports ARMv7 and ARM64 devices running Android 6.0 or later.
+2. Connect to your TV with Android Debug Bridge (ADB), then install the APK. Replace the example path with the file you downloaded.
 
-If your TV is connected through Android Debug Bridge (ADB), install or update it with:
+   ```sh
+   adb install -r "/path/to/downloaded.apk"
+   ```
 
-```sh
-adb install -r tippytv-1.1.0.apk
-```
-
-Open TippyTV and add your first profile. On later launches, the app opens the last profile you used.
-
-When a saved lineup is available, you can browse and tune channels while the TV checks for changes. The first load without a saved lineup shows a loading message. If the source is unavailable, a playlist has no playable entries, or Jellyfin sends incomplete channel pages, the last complete lineup stays available. A successful refresh removes channels that are gone. If Jellyfin rejects your sign-in or revokes Live TV access, the TV clears that saved lineup. Programme listings load as you browse and stay in memory for the session.
+3. Open TippyTV and choose a source on **Add a profile**. The app opens your last-used profile on future launches.
 
 ## Connect a source
 
-| Source | What you need |
+| Source | What to enter |
 | --- | --- |
-| Jellyfin | A server address and an account with Live TV access. Choose **Quick Connect** to approve sign-in on another device, or enter your password. |
-| Xtream | A profile name, your provider’s base URL (including any port or path), username, and password. TippyTV reads the live-channel API and falls back to the M3U export if needed. |
-| Playlist | A profile name, an M3U URL, and optionally an XMLTV guide URL. For a GitHub Gist, paste its page URL and select the playlist and guide files. |
+| Jellyfin | The server address and an account with Live TV access. Use your password or choose **Quick Connect** to approve sign-in on another device. |
+| Xtream | A profile name, the provider's base URL, username, and password. Include the port or path if your provider supplies one. |
+| M3U playlist | A profile name, the playlist URL, and an optional XMLTV guide URL. If you paste a GitHub Gist page URL, TippyTV lets you choose the files. |
 
-On the **Add a profile** screen, choose **Set up with your phone**, **Jellyfin**, **Xtream**, or **M3U playlist**. To switch or add another source later, open **Profile → Switch profile**.
+Use **Profile → Switch profile** to add or open another source.
 
-### Set up with your phone
+### Set up from your phone
 
-Choose **Set up with your phone → Continue**, then scan the QR code on the same Wi-Fi network. Enter your details and select **Continue on TV**. Finish any approval or file selection on the TV.
+Choose **Set up with your phone → Continue** on the TV, then scan the QR code from a phone on the same network. Enter your source details on the phone and select **Continue on TV**. Finish any approval or file selection with the remote.
 
-The TV hosts the HTTPS page. First-time certificate setup needs internet access and may take several minutes. The QR code is valid for 15 minutes. Submitting, canceling, leaving the app, or losing the TV’s local address closes the listener. Certificate keys stay on the TV. [Lancert terms](https://lancert.dev/terms) · [Let’s Encrypt agreements](https://letsencrypt.org/repository/)
+The TV hosts the HTTPS form and keeps its certificate keys locally. First-time setup needs internet access and may take several minutes. The QR code expires after 15 minutes. [Privacy policy](https://therealparmesh.github.io/TippyTV/privacy.html) · [Lancert terms](https://lancert.dev/terms) · [Let's Encrypt agreements](https://letsencrypt.org/repository/)
 
-## Use the remote
+## Watch live TV
 
 | To… | Use… |
 | --- | --- |
-| Watch a channel | Press **Select** for the preview. Press it again for full screen. |
-| Show controls or leave full screen | Press a direction or **Select** for controls. Press **Back** for the browser. |
-| Pause or resume | Press **Play/Pause**, or choose **Pause** or **Resume live**. |
-| Find a channel | Use **Search** for names or numbers and **Jump** for letters or list endpoints. Press **Left** from the list for **−50** and **+50**. Skip repeatedly, then press **Up** to focus the destination. |
+| Preview or go full screen | Press **Select** on a channel to preview it. Press it again to go full screen. |
+| Show playback controls | Press a direction or **Select** in full screen. Press **Back** to return to channels. |
+| Pause or resume | Press **Play/Pause** on the remote or use **Pause** and **Resume live** on screen. |
+| Browse a long lineup | Use **Search** for names and numbers, or **Jump** for letters and list endpoints. From a channel row, press **Left** for **−50** and **+50**, then press **Up** to focus the destination. |
 | Save a favorite | Hold **Select** and choose **Add favorite**. Switch between **Favorites** and **All channels** to change views and clear the search. |
 | Read the guide | Open **Guide**. **Earlier** and **Later** move three hours at a time. **Now** returns to the current window. |
-| Watch two channels | Hold **Select** on a second channel and choose **Play in inset**. **Swap** changes which picture has audio. **Close inset** releases the second stream. |
+| Watch two channels | Hold **Select** on the second channel and choose **Play in inset**. **Swap** changes which channel has audio. **Close inset** stops the second stream. |
 
-Jellyfin saves favorites to your server account. On cold start, Jellyfin favorites reflect the last saved lineup until the server responds. Xtream and playlist favorites belong to their profile on the TV. Switching profiles preserves them. Removing a playlist or Xtream profile deletes its local favorites.
+Jellyfin favorites sync to your server account. Xtream and playlist favorites stay with their profile on this TV. A provider rename or a change to a channel's identity can require adding it again.
 
-Playlist and Xtream favorites follow the provider's channel identity. If the provider renames a channel, or changes its URL without a unique guide ID, you may need to favorite it again.
-
-**Profile → Filter low-quality content** is on by default across profiles on this TV. It uses provider flags and groups, including Jellyfin genres and tags. Turning it off restores hidden channels and their saved favorites. Channel names have no effect on the filter.
+With **Profile → Filter low-quality content** enabled, TippyTV hides channels using the provider's flags, groups, genres, or tags. The setting is on by default and applies across profiles on this TV.
 
 ## Troubleshooting
 
-- **Phone setup page won’t open.** Put both devices on the same local network. Guest Wi-Fi isolation, a VPN, or DNS rebinding protection can prevent the phone from reaching the TV. Remote setup is also available.
-- **Server won’t connect.** Check the address and port, and grant local network access if prompted. A Jellyfin `.local` hostname requires multicast DNS. For Xtream, enter the base address, such as `https://tv.example:8443`.
-- **The lineup loads from scratch.** Each profile has its own encrypted channel cache. The TV loads from the source after sign-out, profile removal, Android cache eviction, or when a compressed lineup exceeds 8 MiB.
-- **Channels load but the guide is empty.** Check that listings cover the selected time. An Xtream channel’s `epg_channel_id` or M3U entry’s `tvg-id` must match the XMLTV channel ID. If an XMLTV programme omits its end time, TippyTV uses the next programme’s start time on that channel. It skips the programme if neither time is available.
-- **Playback stops.** Choose **Try again**. For Jellyfin, **Try a compatible stream** requests H.264/AAC conversion if your server permits it. Xtream and M3U use the provider’s stream directly.
+- **The TV is refreshing channels.** You can browse and tune from the last saved lineup while TippyTV checks for changes. A failed refresh keeps that lineup available. A successful refresh removes channels that are gone. Signing out, removing the profile, or revoked Jellyfin access clears the saved lineup.
+- **Channels load from scratch.** A new profile, an evicted cache, or a lineup too large to save requires a fresh download.
+- **The guide is empty.** Check that your provider has listings for the selected time. For Xtream and M3U, the channel's `epg_channel_id` or `tvg-id` must match the XMLTV channel ID. Listings load as you browse and stay in memory while the app runs.
+- **The stream stopped.** Use **Try again** in playback. For Jellyfin, hold **Select** on the channel and choose **Try a compatible stream** to request H.264/AAC conversion if your server permits it.
+- **The source won't connect.** Check the host and port, and grant local network access if prompted. A Jellyfin `.local` hostname needs multicast DNS on the network.
+- **The phone setup page won't open.** Check that both devices are on the same network. Guest network isolation, a VPN, or DNS rebinding protection can block access. Use **Try again** on the TV or finish setup with the remote.
 
-## Development
+## Contributing
 
-For build requirements, test commands, and the commit convention, see [Contributing](CONTRIBUTING.md).
+See [CONTRIBUTING.md](CONTRIBUTING.md) for build, test, and release instructions. Report problems through [GitHub Issues](https://github.com/therealparmesh/TippyTV/issues). Keep passwords, tokens, and private playlist URLs out of reports.
 
 ## License
 
-TippyTV’s original source code is available under the [MIT License](LICENSE). The APK includes GPL-enabled mpv and FFmpeg libraries, so the combined application is distributed under [GPLv3](app/src/main/assets/licenses/GPL-3.0.txt). Third-party components retain their own notices. See the [native dependency notes](third_party/mpv/README.md) and [Dracula CSS license](phone/Dracula-LICENSE.txt).
+TippyTV's original code is under the [MIT License](LICENSE). The APK includes GPL-enabled mpv and FFmpeg, so the combined app is distributed under [GPLv3](app/src/main/assets/licenses/GPL-3.0.txt). [Native playback dependencies](third_party/mpv/README.md) · [Dracula CSS license](phone/Dracula-LICENSE.txt)
