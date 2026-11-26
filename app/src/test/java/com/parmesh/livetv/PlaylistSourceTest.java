@@ -140,5 +140,17 @@ public class PlaylistSourceTest {
         assertThrows(
                 IOException.class,
                 () -> PlaylistSource.parse("<html>Unavailable</html>", BASE, "Live"));
+        assertThrows(
+                IOException.class,
+                () -> PlaylistSource.parse(
+                        "#EXTM3U\n#EXTINF:-1,News\nnews.m3u8\n<html>Unavailable</html>",
+                        BASE,
+                        "Live"));
+        assertThrows(
+                IOException.class,
+                () -> PlaylistSource.parse(
+                        "#EXTM3U\n#EXT-X-TARGETDURATION:4\n  <html>Unavailable</html>",
+                        BASE,
+                        "Live"));
     }
 }

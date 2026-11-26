@@ -33,6 +33,9 @@ final class PlaylistSource implements TvSource {
     private static final Pattern RELATIVE_MEDIA =
             Pattern.compile("(?i)[^<>]+\\.(?:m3u8|ts|mp4|aac|mp3)(?:[?#].*)?");
     private static final Pattern ATTR = Pattern.compile("([\\w-]+)=\"([^\"]*)\"");
+    private static final Pattern HLS =
+            Pattern.compile("(?m)^#EXT-X-(STREAM-INF|TARGETDURATION):");
+    private static final Pattern MARKUP = Pattern.compile("(?m)^[\\t ]*<");
     private static final DateTimeFormatter STAMP =
             DateTimeFormatter.ofPattern("yyyyMMddHHmmss", Locale.ROOT);
     private final Jellyfin.Session profile;
@@ -206,70 +209,65 @@ final class PlaylistSource implements TvSource {
 
     static Map<String, Entry> parse(String data, HttpUrl base, String profileName)
             throws IOException {
-        data = data.replaceFirst("^\\uFEFF", "").stripLeading();
-        Map<String, Entry> loaded = new LinkedHashMap<>();
-        if (data.startsWith("#EXTM3U")
-                && Pattern.compile("(?m)^#EXT-X-(STREAM-INF|TARGETDURATION):")
-                        .matcher(data)
-                        .find()) {
-            loaded.put("stream", new Entry(profileName, "", "", base.toString(), false));
-        } else {
-            String name = "", number = "", guide = "";
-            List<Entry> channels = new ArrayList<>();
-            boolean adult = false;
-            boolean groupAdult = false;
-            boolean extended = data.startsWith("#EXTM3U");
-            BufferedReader reader = new BufferedReader(new StringReader(data));
-            for (String line; (line = reader.readLine()) != null; ) {
-                line = line.trim();
-                if (line.startsWith("#EXTINF:")) {
-                    boolean quoted = false;
-                    int comma = 0;
-                    for (; comma < line.length(); comma++) {
-                        char c = line.charAt(comma);
-                        if (c == '"') quoted = !quoted;
-                        if (!quoted && c == ',') break;
-                    }
-                    Matcher attrs = ATTR.matcher(line).region(0, comma);
-                    guide = "";
-                    number = "";
-                    adult = false;
-                    while (attrs.find()) {
-                        if (attrs.group(1).equalsIgnoreCase("group-title")) {
-                            groupAdult = false;
-                            adult = Channels.adultGroup(attrs.group(2));
-                        }
-                        if (attrs.group(1).equals("tvg-id")) guide = attrs.group(2);
-                        if (attrs.group(1).equals("tvg-chno")) number = attrs.group(2);
-                    }
-                    name = comma == line.length() ? "" : line.substring(comma + 1).trim();
-                } else if (line.regionMatches(true, 0, "#EXTGRP:", 0, 8)) {
-                    groupAdult = Channels.adultGroup(line.substring(8));
-                } else if (!line.isEmpty() && !line.startsWith("#")) {
-                    HttpUrl url = HttpUrl.parse(line);
-                    if (url == null
-                            && (extended
-                                    || line.startsWith("/")
-                                    || line.startsWith("./")
-                                    || RELATIVE_MEDIA.matcher(line).matches()))
-                        url = base.resolve(line);
-                    if (url != null) {
-                        String label = name.isEmpty() ? url.host() : name;
-                        Entry entry =
-                                new Entry(
-                                        label, number, guide, url.toString(), adult || groupAdult);
-                        channels.add(entry);
-                    }
-                    adult = false;
-                    name = "";
-                    number = "";
-                    guide = "";
+        data = (data.startsWith("\uFEFF") ? data.substring(1) : data).stripLeading();
+        if (MARKUP.matcher(data).find())
+            throw new IOException("Playlist contains markup instead of a stream URL.");
+        boolean extended = data.startsWith("#EXTM3U");
+        if (extended && HLS.matcher(data).find())
+            return Map.of("stream", new Entry(profileName, "", "", base.toString(), false));
+        String name = "", number = "", guide = "";
+        List<Entry> channels = new ArrayList<>();
+        boolean adult = false;
+        boolean groupAdult = false;
+        BufferedReader reader = new BufferedReader(new StringReader(data));
+        for (String line; (line = reader.readLine()) != null; ) {
+            line = line.trim();
+            if (line.startsWith("#EXTINF:")) {
+                boolean quoted = false;
+                int comma = 0;
+                for (; comma < line.length(); comma++) {
+                    char c = line.charAt(comma);
+                    if (c == '"') quoted = !quoted;
+                    if (!quoted && c == ',') break;
                 }
+                Matcher attrs = ATTR.matcher(line).region(0, comma);
+                guide = "";
+                number = "";
+                adult = false;
+                while (attrs.find()) {
+                    if (attrs.group(1).equalsIgnoreCase("group-title")) {
+                        groupAdult = false;
+                        adult = Channels.adultGroup(attrs.group(2));
+                    }
+                    if (attrs.group(1).equals("tvg-id")) guide = attrs.group(2);
+                    if (attrs.group(1).equals("tvg-chno")) number = attrs.group(2);
+                }
+                name = comma == line.length() ? "" : line.substring(comma + 1).trim();
+            } else if (line.regionMatches(true, 0, "#EXTGRP:", 0, 8)) {
+                groupAdult = Channels.adultGroup(line.substring(8));
+            } else if (!line.isEmpty() && !line.startsWith("#")) {
+                HttpUrl url = HttpUrl.parse(line);
+                if (url == null
+                        && (extended
+                                || line.startsWith("/")
+                                || line.startsWith("./")
+                                || RELATIVE_MEDIA.matcher(line).matches()))
+                    url = base.resolve(line);
+                if (url != null) {
+                    String label = name.isEmpty() ? url.host() : name;
+                    Entry entry =
+                            new Entry(
+                                    label, number, guide, url.toString(), adult || groupAdult);
+                    channels.add(entry);
+                }
+                adult = false;
+                name = "";
+                number = "";
+                guide = "";
             }
-            loaded = indexChannels(channels);
         }
-        if (loaded.isEmpty()) throw new IOException("Playlist contains no playable channels.");
-        return loaded;
+        if (channels.isEmpty()) throw new IOException("Playlist contains no playable channels.");
+        return indexChannels(channels);
     }
 
     private static Map<String, Entry> indexChannels(List<Entry> channels) {
