@@ -33,8 +33,7 @@ final class PlaylistSource implements TvSource {
     private static final Pattern RELATIVE_MEDIA =
             Pattern.compile("(?i)[^<>]+\\.(?:m3u8|ts|mp4|aac|mp3)(?:[?#].*)?");
     private static final Pattern ATTR = Pattern.compile("([\\w-]+)=\"([^\"]*)\"");
-    private static final Pattern HLS =
-            Pattern.compile("(?m)^#EXT-X-(STREAM-INF|TARGETDURATION):");
+    private static final Pattern HLS = Pattern.compile("(?m)^#EXT-X-(STREAM-INF|TARGETDURATION):");
     private static final Pattern MARKUP = Pattern.compile("(?m)^[\\t ]*<");
     private static final DateTimeFormatter STAMP =
             DateTimeFormatter.ofPattern("yyyyMMddHHmmss", Locale.ROOT);
@@ -256,8 +255,7 @@ final class PlaylistSource implements TvSource {
                 if (url != null) {
                     String label = name.isEmpty() ? url.host() : name;
                     Entry entry =
-                            new Entry(
-                                    label, number, guide, url.toString(), adult || groupAdult);
+                            new Entry(label, number, guide, url.toString(), adult || groupAdult);
                     channels.add(entry);
                 }
                 adult = false;
@@ -321,18 +319,16 @@ final class PlaylistSource implements TvSource {
         Map<String, ?> favorites = stars.getAll();
         Set<String> ids = new HashSet<>();
         List<Channels.Channel> channels = new ArrayList<>(loaded.size());
-        loaded.forEach(
-                (id, entry) -> {
-                    if (!profile.guide().isEmpty() && !entry.guide().isEmpty())
-                        ids.add(entry.guide());
-                    channels.add(
-                            new Channels.Channel(
-                                    id,
-                                    entry.name(),
-                                    entry.number(),
-                                    entry.name().equals(favorites.get(id)),
-                                    entry.adult()));
-                });
+        loaded.forEach((id, entry) -> {
+            if (!profile.guide().isEmpty() && !entry.guide().isEmpty()) ids.add(entry.guide());
+            channels.add(
+                    new Channels.Channel(
+                            id,
+                            entry.name(),
+                            entry.number(),
+                            entry.name().equals(favorites.get(id)),
+                            entry.adult()));
+        });
         entries = loaded;
         if (!ids.equals(guideIds)) guideIds = ids;
         return channels;

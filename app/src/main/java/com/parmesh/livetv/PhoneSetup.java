@@ -44,29 +44,25 @@ final class PhoneSetup {
         qr.setContentDescription(activity.getString(R.string.phone_scan));
         screen.add(qr, 8);
         Button start = activity.button(R.string.phone_start, null);
-        start.setOnClickListener(
-                v -> {
-                    start.setEnabled(false);
-                    activity.requestLocalNetwork(
-                            allowed -> {
-                                if (dialog != screen) return;
-                                if (!allowed) {
-                                    status.setText(R.string.local_network_access);
-                                    start.setEnabled(true);
-                                    return;
-                                }
-                                start.setVisibility(View.GONE);
-                                status.setText(R.string.phone_preparing);
-                                new Thread(() -> serve(screen, status, qr, start), "phone-setup")
-                                        .start();
-                            });
-                });
+        start.setOnClickListener(v -> {
+            start.setEnabled(false);
+            activity.requestLocalNetwork(allowed -> {
+                if (dialog != screen) return;
+                if (!allowed) {
+                    status.setText(R.string.local_network_access);
+                    start.setEnabled(true);
+                    return;
+                }
+                start.setVisibility(View.GONE);
+                status.setText(R.string.phone_preparing);
+                new Thread(() -> serve(screen, status, qr, start), "phone-setup").start();
+            });
+        });
         screen.add(start, 12);
         screen.add(activity.button(R.string.cancel, screen::dismiss), 8);
-        screen.onDismiss(
-                () -> {
-                    if (dialog == screen) close();
-                });
+        screen.onDismiss(() -> {
+            if (dialog == screen) close();
+        });
         screen.show(start);
     }
 
@@ -110,13 +106,11 @@ final class PhoneSetup {
                             @Override
                             public void onLost(android.net.Network lost) {
                                 if (lost.equals(network))
-                                    activity.runOnUiThread(
-                                            () -> {
-                                                synchronized (PhoneSetup.this) {
-                                                    if (dialog == screen && networkWatch == this)
-                                                        close();
-                                                }
-                                            });
+                                    activity.runOnUiThread(() -> {
+                                        synchronized (PhoneSetup.this) {
+                                            if (dialog == screen && networkWatch == this) close();
+                                        }
+                                    });
                             }
 
                             @Override
@@ -152,36 +146,33 @@ final class PhoneSetup {
                     for (int x = 0; x < 450; x++)
                         pixels[y * 450 + x] = bits.get(x, y) ? 0xff000000 : 0xffffffff;
                 Bitmap image = Bitmap.createBitmap(pixels, 450, 450, Bitmap.Config.ARGB_8888);
-                activity.runOnUiThread(
-                        () -> {
-                            if (dialog != screen) return;
-                            status.setText(R.string.phone_scan);
-                            qr.getLayoutParams().height = activity.dp(186);
-                            qr.setImageBitmap(image);
-                            qr.setVisibility(View.VISIBLE);
-                        });
+                activity.runOnUiThread(() -> {
+                    if (dialog != screen) return;
+                    status.setText(R.string.phone_scan);
+                    qr.getLayoutParams().height = activity.dp(186);
+                    qr.setImageBitmap(image);
+                    qr.setVisibility(View.VISIBLE);
+                });
                 JSONObject form = new JSONObject(out.readLine());
-                activity.runOnUiThread(
-                        () -> {
-                            if (dialog != screen) return;
-                            close();
-                            activity.phoneSubmitted(form);
-                        });
+                activity.runOnUiThread(() -> {
+                    if (dialog != screen) return;
+                    close();
+                    activity.phoneSubmitted(form);
+                });
             }
         } catch (Exception failure) {
-            activity.runOnUiThread(
-                    () -> {
-                        synchronized (this) {
-                            if (dialog != screen) return;
-                            stopSharing();
-                        }
-                        status.setText(R.string.phone_unavailable);
-                        qr.setVisibility(View.GONE);
-                        start.setText(R.string.retry);
-                        start.setEnabled(true);
-                        start.setVisibility(View.VISIBLE);
-                        start.requestFocus();
-                    });
+            activity.runOnUiThread(() -> {
+                synchronized (this) {
+                    if (dialog != screen) return;
+                    stopSharing();
+                }
+                status.setText(R.string.phone_unavailable);
+                qr.setVisibility(View.GONE);
+                start.setText(R.string.retry);
+                start.setEnabled(true);
+                start.setVisibility(View.VISIBLE);
+                start.requestFocus();
+            });
         } finally {
             if (child != null) child.destroy();
         }

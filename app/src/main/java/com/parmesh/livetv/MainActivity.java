@@ -206,26 +206,19 @@ public final class MainActivity extends ComponentActivity {
         TextView opening = text(getString(R.string.opening), 19, TEXT);
         opening.setGravity(Gravity.CENTER);
         setContentView(opening);
-        accounts.execute(
-                () -> {
-                    Jellyfin.Session saved = store.read();
-                    ui.post(
-                            () -> {
-                                if (destroyed) return;
-                                if (saved == null
-                                        || getIntent().getBooleanExtra("addAccount", false))
-                                    showLogin("");
-                                else
-                                    requestLocalNetwork(
-                                            granted -> {
-                                                if (granted) connected(saved);
-                                                else
-                                                    showLogin(
-                                                            getString(
-                                                                    R.string.local_network_access));
-                                            });
-                            });
-                });
+        accounts.execute(() -> {
+            Jellyfin.Session saved = store.read();
+            ui.post(() -> {
+                if (destroyed) return;
+                if (saved == null || getIntent().getBooleanExtra("addAccount", false))
+                    showLogin("");
+                else
+                    requestLocalNetwork(granted -> {
+                        if (granted) connected(saved);
+                        else showLogin(getString(R.string.local_network_access));
+                    });
+            });
+        });
     }
 
     int dp(float value) {
@@ -272,10 +265,9 @@ public final class MainActivity extends ComponentActivity {
                         });
         dialog.add(settings, 16);
         dialog.add(button(R.string.cancel, dialog::dismiss), 8);
-        dialog.onDismiss(
-                () -> {
-                    if (!openingSettings[0]) finishNetworkRequest(false);
-                });
+        dialog.onDismiss(() -> {
+            if (!openingSettings[0]) finishNetworkRequest(false);
+        });
         dialog.show(settings);
     }
 
@@ -404,31 +396,28 @@ public final class MainActivity extends ComponentActivity {
         dismissDialogs();
         if (signIn != null) signIn.cancel();
         signIn = null;
-        accounts.execute(
-                () -> {
-                    boolean persisted;
-                    try {
-                        store.save(session);
-                        persisted = true;
-                    } catch (Exception failure) {
-                        persisted = false;
-                    }
-                    boolean saved = persisted;
-                    ui.post(
-                            () -> {
-                                if (destroyed) return;
-                                if (!saved) {
-                                    if (session.direct()) checkedPlaylist().take(session);
-                                    if (api == null)
-                                        showLogin(getString(R.string.sign_in_not_saved));
-                                    else toast(getString(R.string.sign_in_not_saved));
-                                    return;
-                                }
-                                getIntent().removeExtra("addAccount");
-                                if (api == null) connected(session);
-                                else recreate();
-                            });
-                });
+        accounts.execute(() -> {
+            boolean persisted;
+            try {
+                store.save(session);
+                persisted = true;
+            } catch (Exception failure) {
+                persisted = false;
+            }
+            boolean saved = persisted;
+            ui.post(() -> {
+                if (destroyed) return;
+                if (!saved) {
+                    if (session.direct()) checkedPlaylist().take(session);
+                    if (api == null) showLogin(getString(R.string.sign_in_not_saved));
+                    else toast(getString(R.string.sign_in_not_saved));
+                    return;
+                }
+                getIntent().removeExtra("addAccount");
+                if (api == null) connected(session);
+                else recreate();
+            });
+        });
     }
 
     EditText edit(String hint, int type) {
@@ -447,15 +436,14 @@ public final class MainActivity extends ComponentActivity {
 
     static void submitOnDone(EditText field, Button submit) {
         field.setImeOptions(EditorInfo.IME_ACTION_DONE | EditorInfo.IME_FLAG_NO_EXTRACT_UI);
-        field.setOnEditorActionListener(
-                (view, action, event) -> {
-                    if ((action == EditorInfo.IME_ACTION_GO || action == EditorInfo.IME_ACTION_DONE)
-                            && submit.isEnabled()) {
-                        submit.performClick();
-                        return true;
-                    }
-                    return false;
-                });
+        field.setOnEditorActionListener((view, action, event) -> {
+            if ((action == EditorInfo.IME_ACTION_GO || action == EditorInfo.IME_ACTION_DONE)
+                    && submit.isEnabled()) {
+                submit.performClick();
+                return true;
+            }
+            return false;
+        });
     }
 
     PlaylistSource.CheckedPlaylist checkedPlaylist() {
@@ -559,18 +547,16 @@ public final class MainActivity extends ComponentActivity {
                         super.onLayoutCompleted(state);
                         String id = pendingJump;
                         if (id == null) return;
-                        list.postOnAnimation(
-                                () -> {
-                                    if (destroyed || !id.equals(pendingJump) || fullscreen) return;
-                                    List<Channels.Channel> channels = adapter.channels;
-                                    if (focusedPosition >= channels.size()
-                                            || !id.equals(channels.get(focusedPosition).id()))
-                                        return;
-                                    RecyclerView.ViewHolder holder =
-                                            list.findViewHolderForAdapterPosition(focusedPosition);
-                                    if (holder != null && holder.itemView.requestFocusFromTouch())
-                                        pendingJump = null;
-                                });
+                        list.postOnAnimation(() -> {
+                            if (destroyed || !id.equals(pendingJump) || fullscreen) return;
+                            List<Channels.Channel> channels = adapter.channels;
+                            if (focusedPosition >= channels.size()
+                                    || !id.equals(channels.get(focusedPosition).id())) return;
+                            RecyclerView.ViewHolder holder =
+                                    list.findViewHolderForAdapterPosition(focusedPosition);
+                            if (holder != null && holder.itemView.requestFocusFromTouch())
+                                pendingJump = null;
+                        });
                     }
                 };
         list.setLayoutManager(rows);
@@ -608,13 +594,12 @@ public final class MainActivity extends ComponentActivity {
         next.setContentDescription(getString(R.string.skip_forward));
         addButton(pager, next);
         for (Button pageButton : List.of(previous, next)) {
-            pageButton.setOnKeyListener(
-                    (view, key, event) -> {
-                        if (event.getAction() != KeyEvent.ACTION_DOWN
-                                || key != KeyEvent.KEYCODE_DPAD_UP) return false;
-                        returnToSelectedChannel();
-                        return true;
-                    });
+            pageButton.setOnKeyListener((view, key, event) -> {
+                if (event.getAction() != KeyEvent.ACTION_DOWN || key != KeyEvent.KEYCODE_DPAD_UP)
+                    return false;
+                returnToSelectedChannel();
+                return true;
+            });
         }
         TextView channelHelp = text(getString(R.string.channel_actions_hint), 14, DIM);
         channelHelp.setGravity(Gravity.CENTER_VERTICAL | Gravity.END);
@@ -646,27 +631,24 @@ public final class MainActivity extends ComponentActivity {
                     }
                 };
         video.setBackground(box(0xff171719, 0, 12));
-        video.setOnClickListener(
-                view -> {
-                    if (fullscreen) showWatchControls();
-                    else if (player.primary() != null || selected != null) {
-                        if (player.primary() == null) tune(selected, false);
-                        setFullscreen(true);
-                    }
-                });
+        video.setOnClickListener(view -> {
+            if (fullscreen) showWatchControls();
+            else if (player.primary() != null || selected != null) {
+                if (player.primary() == null) tune(selected, false);
+                setFullscreen(true);
+            }
+        });
         video.setFocusable(true);
         video.setContentDescription(getString(R.string.full_screen));
-        video.setOnFocusChangeListener(
-                (view, focused) ->
-                        video.setForeground(focused && !fullscreen ? box(0, ACCENT, 12) : null));
-        video.setOnKeyListener(
-                (view, key, event) -> {
-                    if (fullscreen
-                            || event.getAction() != KeyEvent.ACTION_DOWN
-                            || key != KeyEvent.KEYCODE_DPAD_LEFT) return false;
-                    returnToSelectedChannel();
-                    return true;
-                });
+        video.setOnFocusChangeListener((view, focused) ->
+                video.setForeground(focused && !fullscreen ? box(0, ACCENT, 12) : null));
+        video.setOnKeyListener((view, key, event) -> {
+            if (fullscreen
+                    || event.getAction() != KeyEvent.ACTION_DOWN
+                    || key != KeyEvent.KEYCODE_DPAD_LEFT) return false;
+            returnToSelectedChannel();
+            return true;
+        });
         previewSlot = new View(this);
         stage.addView(previewSlot, new LinearLayout.LayoutParams(-1, 0, 1));
         root.addView(video, new FrameLayout.LayoutParams(0, 0));
@@ -711,23 +693,22 @@ public final class MainActivity extends ComponentActivity {
         programText.setMaxLines(2);
         programText.setEllipsize(TextUtils.TruncateAt.END);
         stage.addView(programText, new LinearLayout.LayoutParams(-1, dp(43)));
-        shell.addOnLayoutChangeListener(
-                (v, l, t, r, b, ol, ot, or, ob) -> {
-                    if (r - l == or - ol) return;
-                    boolean compact = r - l < dp(700);
-                    body.setOrientation(compact ? LinearLayout.VERTICAL : LinearLayout.HORIZONTAL);
-                    browser.setLayoutParams(
-                            compact
-                                    ? new LinearLayout.LayoutParams(-1, 0, .58f)
-                                    : new LinearLayout.LayoutParams(0, -1, .42f));
-                    LinearLayout.LayoutParams size =
-                            compact
-                                    ? new LinearLayout.LayoutParams(-1, 0, .42f)
-                                    : new LinearLayout.LayoutParams(0, -1, .58f);
-                    if (compact) size.topMargin = dp(8);
-                    else size.leftMargin = dp(12);
-                    stage.setLayoutParams(size);
-                });
+        shell.addOnLayoutChangeListener((v, l, t, r, b, ol, ot, or, ob) -> {
+            if (r - l == or - ol) return;
+            boolean compact = r - l < dp(700);
+            body.setOrientation(compact ? LinearLayout.VERTICAL : LinearLayout.HORIZONTAL);
+            browser.setLayoutParams(
+                    compact
+                            ? new LinearLayout.LayoutParams(-1, 0, .58f)
+                            : new LinearLayout.LayoutParams(0, -1, .42f));
+            LinearLayout.LayoutParams size =
+                    compact
+                            ? new LinearLayout.LayoutParams(-1, 0, .42f)
+                            : new LinearLayout.LayoutParams(0, -1, .58f);
+            if (compact) size.topMargin = dp(8);
+            else size.leftMargin = dp(12);
+            stage.setLayoutParams(size);
+        });
         buildWatchControls();
         player =
                 new Playback(
@@ -779,97 +760,88 @@ public final class MainActivity extends ComponentActivity {
         catalogBusy = true;
         loadProblem = null;
         updateCount();
-        catalog.execute(
-                () -> {
-                    boolean replace = hasLineup;
-                    if (!replace) {
-                        List<Channels.Channel> cached = saved.read(server);
-                        if (catalogGeneration != generation) return;
-                        if (!cached.isEmpty()) {
-                            publishCatalog(
-                                    server, generation, favoriteBaseline, cached, false, null);
-                            replace = true;
+        catalog.execute(() -> {
+            boolean replace = hasLineup;
+            if (!replace) {
+                List<Channels.Channel> cached = saved.read(server);
+                if (catalogGeneration != generation) return;
+                if (!cached.isEmpty()) {
+                    publishCatalog(server, generation, favoriteBaseline, cached, false, null);
+                    replace = true;
+                }
+            }
+            var accumulated = new LinkedHashMap<String, Channels.Channel>();
+            int cursor = 0, pages = 0, expectedTotal = -1;
+            try {
+                while (catalogGeneration == generation) {
+                    TvSource.Page page = server.channels(cursor);
+                    if (catalogGeneration != generation) return;
+                    cursor = page.nextStart();
+                    boolean done = cursor < 0;
+                    List<Channels.Channel> snapshot;
+                    if (server instanceof PlaylistSource) {
+                        snapshot = page.channels();
+                    } else {
+                        if (page.total() >= 0) {
+                            if (expectedTotal >= 0 && page.total() != expectedTotal)
+                                throw new java.io.IOException(
+                                        "Jellyfin changed the lineup while it was loading.");
+                            expectedTotal = page.total();
                         }
-                    }
-                    var accumulated = new LinkedHashMap<String, Channels.Channel>();
-                    int cursor = 0, pages = 0, expectedTotal = -1;
-                    try {
-                        while (catalogGeneration == generation) {
-                            TvSource.Page page = server.channels(cursor);
-                            if (catalogGeneration != generation) return;
-                            cursor = page.nextStart();
-                            boolean done = cursor < 0;
-                            List<Channels.Channel> snapshot;
-                            if (server instanceof PlaylistSource) {
-                                snapshot = page.channels();
-                            } else {
-                                if (page.total() >= 0) {
-                                    if (expectedTotal >= 0 && page.total() != expectedTotal)
-                                        throw new java.io.IOException(
-                                                "Jellyfin changed the lineup while it was loading.");
-                                    expectedTotal = page.total();
-                                }
-                                for (Channels.Channel c : page.channels()) {
-                                    if (accumulated.putIfAbsent(c.id(), c) != null)
-                                        throw new java.io.IOException(
-                                                "Jellyfin repeated a channel.");
-                                }
-                                if (expectedTotal >= 0
-                                        && (accumulated.size() > expectedTotal
-                                                || (done && accumulated.size() != expectedTotal)))
-                                    throw new java.io.IOException(
-                                            "Jellyfin returned an incomplete channel list.");
-                                if (!done && (replace || pages++ % 3 != 0)) continue;
-                                snapshot = List.copyOf(accumulated.values());
-                            }
-                            publishCatalog(
-                                    server, generation, favoriteBaseline, snapshot, done, null);
-                            if (done) {
-                                saved.write(snapshot, server);
-                                return;
-                            }
+                        for (Channels.Channel c : page.channels()) {
+                            if (accumulated.putIfAbsent(c.id(), c) != null)
+                                throw new java.io.IOException("Jellyfin repeated a channel.");
                         }
-                    } catch (Exception failure) {
-                        boolean expired =
-                                failure instanceof Jellyfin.HttpFailure http && http.status == 401;
-                        boolean denied =
-                                failure instanceof Jellyfin.HttpFailure http && http.status == 403;
-                        String error =
-                                denied
-                                        ? getString(R.string.no_live_tv_access)
-                                        : needsLocalNetworkPermission()
-                                                ? getString(R.string.local_network_access)
-                                                : getString(R.string.channels_load_failed);
-                        if (catalogGeneration != generation) return;
-                        if (denied) {
-                            saved.clear();
-                            publishCatalog(
-                                    server, generation, favoriteBaseline, List.of(), true, error);
-                        } else if (expired || replace) {
-                            ui.post(
-                                    () -> {
-                                        if (destroyed
-                                                || api != server
-                                                || catalogGeneration != generation) return;
-                                        if (expired) {
-                                            signOut(false);
-                                            return;
-                                        }
-                                        catalogBusy = false;
-                                        loadProblem = error;
-                                        updateCount();
-                                        toast(loadProblem);
-                                    });
-                        } else
-                            publishCatalog(
-                                    server,
-                                    generation,
-                                    favoriteBaseline,
-                                    List.copyOf(accumulated.values()),
-                                    true,
-                                    error);
+                        if (expectedTotal >= 0
+                                && (accumulated.size() > expectedTotal
+                                        || (done && accumulated.size() != expectedTotal)))
+                            throw new java.io.IOException(
+                                    "Jellyfin returned an incomplete channel list.");
+                        if (!done && (replace || pages++ % 3 != 0)) continue;
+                        snapshot = List.copyOf(accumulated.values());
                     }
-                });
+                    publishCatalog(server, generation, favoriteBaseline, snapshot, done, null);
+                    if (done) {
+                        saved.write(snapshot, server);
+                        return;
+                    }
+                }
+            } catch (Exception failure) {
+                boolean expired =
+                        failure instanceof Jellyfin.HttpFailure http && http.status == 401;
+                boolean denied = failure instanceof Jellyfin.HttpFailure http && http.status == 403;
+                String error =
+                        denied
+                                ? getString(R.string.no_live_tv_access)
+                                : needsLocalNetworkPermission()
+                                        ? getString(R.string.local_network_access)
+                                        : getString(R.string.channels_load_failed);
+                if (catalogGeneration != generation) return;
+                if (denied) {
+                    saved.clear();
+                    publishCatalog(server, generation, favoriteBaseline, List.of(), true, error);
+                } else if (expired || replace) {
+                    ui.post(() -> {
+                        if (destroyed || api != server || catalogGeneration != generation) return;
+                        if (expired) {
+                            signOut(false);
+                            return;
+                        }
+                        catalogBusy = false;
+                        loadProblem = error;
+                        updateCount();
+                        toast(loadProblem);
+                    });
+                } else
+                    publishCatalog(
+                            server,
+                            generation,
+                            favoriteBaseline,
+                            List.copyOf(accumulated.values()),
+                            true,
+                            error);
+            }
+        });
     }
 
     private void publishCatalog(
@@ -883,25 +855,22 @@ public final class MainActivity extends ComponentActivity {
                 snapshot.stream()
                         .filter(c -> !c.adult())
                         .collect(java.util.stream.Collectors.toList());
-        ui.post(
-                () -> {
-                    if (destroyed || api != server || catalogGeneration != generation) return;
-                    fullLineup = snapshot;
-                    filteredLineup = filtered;
-                    catalogBusy = !done;
-                    loadProblem = error;
-                    if (done && (error == null || snapshot.isEmpty())) {
-                        ++guideGeneration;
-                        epg.clear();
-                        noGuideUntil = guideCheckedUntil = guideBackoffUntil = 0;
-                        favoriteOverrides
-                                .values()
-                                .removeIf(edit -> edit.revision() <= favoriteBaseline);
-                        reconcilePlayback();
-                    }
-                    rebuildFavorites();
-                    renderFilter(false);
-                });
+        ui.post(() -> {
+            if (destroyed || api != server || catalogGeneration != generation) return;
+            fullLineup = snapshot;
+            filteredLineup = filtered;
+            catalogBusy = !done;
+            loadProblem = error;
+            if (done && (error == null || snapshot.isEmpty())) {
+                ++guideGeneration;
+                epg.clear();
+                noGuideUntil = guideCheckedUntil = guideBackoffUntil = 0;
+                favoriteOverrides.values().removeIf(edit -> edit.revision() <= favoriteBaseline);
+                reconcilePlayback();
+            }
+            rebuildFavorites();
+            renderFilter(false);
+        });
     }
 
     private List<Channels.Channel> visibleLineup() {
@@ -955,56 +924,47 @@ public final class MainActivity extends ComponentActivity {
         String term = query;
         queryButton.setText(term.isBlank() ? R.string.search : R.string.search_active);
         filterButton.setText(starred ? R.string.all_channels : R.string.favorites);
-        search.execute(
-                () -> {
-                    if (generation != visibleGeneration) return;
-                    List<Channels.Channel> filtered =
-                            Channels.filter(channels, stars, starred, term);
-                    Map<String, Integer> index = Channels.jumpTargets(filtered);
-                    ui.post(
-                            () -> {
-                                if (destroyed || api == null || generation != visibleGeneration)
-                                    return;
-                                View focus = list.getFocusedChild();
-                                int focusPosition =
-                                        focus == null
-                                                ? RecyclerView.NO_POSITION
-                                                : list.getChildAdapterPosition(focus);
-                                adapter.replaceChannels(filtered);
-                                jumps = index;
-                                int position =
-                                        selected == null
-                                                ? -1
-                                                : Channels.indexOf(filtered, selected.id());
-                                int restoredPosition =
-                                        position >= 0
-                                                ? position
-                                                : Channels.jumpPage(
-                                                        focusedPosition, filtered.size(), 0);
-                                if (filtered.isEmpty()) {
-                                    if (list.hasFocus())
-                                        (starred && term.isBlank() ? filterButton : queryButton)
-                                                .requestFocusFromTouch();
-                                    selected = null;
-                                    pendingJump = null;
-                                    focusedPosition = 0;
-                                } else if (resetSelection
-                                        || pendingJump != null
-                                        || (focus != null && restoredPosition != focusPosition)) {
-                                    jump(resetSelection ? 0 : restoredPosition);
-                                } else {
-                                    focusedPosition = restoredPosition;
-                                    selected = filtered.get(focusedPosition);
-                                }
-                                boolean focusRecovery = resetSelection && filtered.isEmpty();
-                                resetSelection = false;
-                                updateCount();
-                                if (focusRecovery && emptyAction.isShown())
-                                    emptyAction.requestFocus();
-                                updateSelection();
-                                scheduleGuide();
-                            });
-                });
+        search.execute(() -> {
+            if (generation != visibleGeneration) return;
+            List<Channels.Channel> filtered = Channels.filter(channels, stars, starred, term);
+            Map<String, Integer> index = Channels.jumpTargets(filtered);
+            ui.post(() -> {
+                if (destroyed || api == null || generation != visibleGeneration) return;
+                View focus = list.getFocusedChild();
+                int focusPosition =
+                        focus == null
+                                ? RecyclerView.NO_POSITION
+                                : list.getChildAdapterPosition(focus);
+                adapter.replaceChannels(filtered);
+                jumps = index;
+                int position = selected == null ? -1 : Channels.indexOf(filtered, selected.id());
+                int restoredPosition =
+                        position >= 0
+                                ? position
+                                : Channels.jumpPage(focusedPosition, filtered.size(), 0);
+                if (filtered.isEmpty()) {
+                    if (list.hasFocus())
+                        (starred && term.isBlank() ? filterButton : queryButton)
+                                .requestFocusFromTouch();
+                    selected = null;
+                    pendingJump = null;
+                    focusedPosition = 0;
+                } else if (resetSelection
+                        || pendingJump != null
+                        || (focus != null && restoredPosition != focusPosition)) {
+                    jump(resetSelection ? 0 : restoredPosition);
+                } else {
+                    focusedPosition = restoredPosition;
+                    selected = filtered.get(focusedPosition);
+                }
+                boolean focusRecovery = resetSelection && filtered.isEmpty();
+                resetSelection = false;
+                updateCount();
+                if (focusRecovery && emptyAction.isShown()) emptyAction.requestFocus();
+                updateSelection();
+                scheduleGuide();
+            });
+        });
     }
 
     private void updateCount() {
@@ -1073,12 +1033,11 @@ public final class MainActivity extends ComponentActivity {
             addButton(actions, dialog.action(R.string.clear_search, () -> applySearch("")));
         addButton(actions, button(R.string.cancel, dialog::dismiss));
         dialog.add(actions, 12);
-        field.setOnEditorActionListener(
-                (view, action, event) -> {
-                    if (action != EditorInfo.IME_ACTION_SEARCH) return false;
-                    submit.performClick();
-                    return true;
-                });
+        field.setOnEditorActionListener((view, action, event) -> {
+            if (action != EditorInfo.IME_ACTION_SEARCH) return false;
+            submit.performClick();
+            return true;
+        });
         dialog.show(field);
         WindowCompat.getInsetsController(dialog.window(), field)
                 .show(WindowInsetsCompat.Type.ime());
@@ -1194,20 +1153,18 @@ public final class MainActivity extends ComponentActivity {
                         ok = false;
                     }
                     boolean saved = ok;
-                    ui.post(
-                            () -> {
-                                if (destroyed || api != server) return;
-                                pendingFavorites.remove(current.id());
-                                if (saved) {
-                                    favoriteOverrides.put(
-                                            current.id(),
-                                            new FavoriteEdit(
-                                                    current.name(), value, ++favoriteRevision));
-                                    rebuildFavorites();
-                                    if (favoritesOnly) renderFilter(false);
-                                    else refreshGuideRows();
-                                } else toast(getString(R.string.favorite_update_failed));
-                            });
+                    ui.post(() -> {
+                        if (destroyed || api != server) return;
+                        pendingFavorites.remove(current.id());
+                        if (saved) {
+                            favoriteOverrides.put(
+                                    current.id(),
+                                    new FavoriteEdit(current.name(), value, ++favoriteRevision));
+                            rebuildFavorites();
+                            if (favoritesOnly) renderFilter(false);
+                            else refreshGuideRows();
+                        } else toast(getString(R.string.favorite_update_failed));
+                    });
                 };
         // Playlist favorites only update SharedPreferences. Apply before a switch can
         // destroy this activity and cancel its queued account work.
@@ -1467,44 +1424,38 @@ public final class MainActivity extends ComponentActivity {
         int generation = guideGeneration;
         TvSource server = api;
         guideBusy = true;
-        guide.execute(
-                () -> {
-                    try {
-                        boolean available = !probe || server.hasGuide(window, GUIDE_HOURS);
-                        Map<String, List<Channels.Program>> result =
-                                available ? server.programs(ids, window, GUIDE_HOURS) : Map.of();
-                        ui.post(
-                                () -> {
-                                    if (destroyed || api != server) return;
-                                    guideBusy = false;
-                                    if (generation != guideGeneration) {
-                                        scheduleGuide();
-                                        return;
-                                    }
-                                    long time = SystemClock.elapsedRealtime();
-                                    if (probe) guideCheckedUntil = time + GuideCache.FRESH;
-                                    if (!available) noGuideUntil = time + GuideCache.FRESH;
-                                    else
-                                        result.forEach(
-                                                (id, programs) ->
-                                                        epg.put(window, id, programs, time));
-                                    refreshGuideRows();
-                                    if (available) scheduleGuide();
-                                });
-                    } catch (Exception failure) {
-                        ui.post(
-                                () -> {
-                                    if (destroyed || api != server) return;
-                                    guideBusy = false;
-                                    if (generation != guideGeneration) {
-                                        scheduleGuide();
-                                        return;
-                                    }
-                                    guideBackoffUntil = SystemClock.elapsedRealtime() + 15_000;
-                                    refreshGuideRows();
-                                });
+        guide.execute(() -> {
+            try {
+                boolean available = !probe || server.hasGuide(window, GUIDE_HOURS);
+                Map<String, List<Channels.Program>> result =
+                        available ? server.programs(ids, window, GUIDE_HOURS) : Map.of();
+                ui.post(() -> {
+                    if (destroyed || api != server) return;
+                    guideBusy = false;
+                    if (generation != guideGeneration) {
+                        scheduleGuide();
+                        return;
                     }
+                    long time = SystemClock.elapsedRealtime();
+                    if (probe) guideCheckedUntil = time + GuideCache.FRESH;
+                    if (!available) noGuideUntil = time + GuideCache.FRESH;
+                    else result.forEach((id, programs) -> epg.put(window, id, programs, time));
+                    refreshGuideRows();
+                    if (available) scheduleGuide();
                 });
+            } catch (Exception failure) {
+                ui.post(() -> {
+                    if (destroyed || api != server) return;
+                    guideBusy = false;
+                    if (generation != guideGeneration) {
+                        scheduleGuide();
+                        return;
+                    }
+                    guideBackoffUntil = SystemClock.elapsedRealtime() + 15_000;
+                    refreshGuideRows();
+                });
+            }
+        });
     }
 
     private void refreshGuideRows() {
@@ -1574,54 +1525,46 @@ public final class MainActivity extends ComponentActivity {
                         long from = window[0];
                         int generation = guideGeneration;
                         request[0] =
-                                guide.submit(
-                                        () -> {
-                                            List<Channels.Program> result;
-                                            try {
-                                                result =
-                                                        server.programs(
-                                                                        List.of(channel.id()),
-                                                                        from,
-                                                                        GUIDE_HOURS)
-                                                                .get(channel.id());
-                                            } catch (Exception failure) {
-                                                result = null;
-                                            }
-                                            List<Channels.Program> programs = result;
-                                            ui.post(
-                                                    () -> {
-                                                        if (destroyed
-                                                                || server != api
-                                                                || !dialog.isShowing()
-                                                                || window[0] != from) return;
-                                                        if (generation != guideGeneration) {
-                                                            run();
-                                                        } else if (programs == null) {
-                                                            scheduleMessage(
-                                                                    entries,
-                                                                    R.string.guide_load_failed);
-                                                            LinearLayout.LayoutParams size =
-                                                                    new LinearLayout.LayoutParams(
-                                                                            -2, dp(44));
-                                                            size.topMargin = dp(12);
-                                                            entries.addView(retry, size);
-                                                        } else {
-                                                            epg.put(
-                                                                    from,
-                                                                    channel.id(),
-                                                                    programs,
-                                                                    SystemClock.elapsedRealtime());
-                                                            showSchedule(entries, programs);
-                                                            schedule.post(
-                                                                    () ->
-                                                                            schedule.setFocusable(
-                                                                                    entries
-                                                                                                    .getHeight()
-                                                                                            > schedule
-                                                                                                    .getHeight()));
-                                                        }
-                                                    });
-                                        });
+                                guide.submit(() -> {
+                                    List<Channels.Program> result;
+                                    try {
+                                        result =
+                                                server.programs(
+                                                                List.of(channel.id()),
+                                                                from,
+                                                                GUIDE_HOURS)
+                                                        .get(channel.id());
+                                    } catch (Exception failure) {
+                                        result = null;
+                                    }
+                                    List<Channels.Program> programs = result;
+                                    ui.post(() -> {
+                                        if (destroyed
+                                                || server != api
+                                                || !dialog.isShowing()
+                                                || window[0] != from) return;
+                                        if (generation != guideGeneration) {
+                                            run();
+                                        } else if (programs == null) {
+                                            scheduleMessage(entries, R.string.guide_load_failed);
+                                            LinearLayout.LayoutParams size =
+                                                    new LinearLayout.LayoutParams(-2, dp(44));
+                                            size.topMargin = dp(12);
+                                            entries.addView(retry, size);
+                                        } else {
+                                            epg.put(
+                                                    from,
+                                                    channel.id(),
+                                                    programs,
+                                                    SystemClock.elapsedRealtime());
+                                            showSchedule(entries, programs);
+                                            schedule.post(() ->
+                                                    schedule.setFocusable(
+                                                            entries.getHeight()
+                                                                    > schedule.getHeight()));
+                                        }
+                                    });
+                                });
                     }
                 };
         Runnable cancel =
@@ -1664,34 +1607,29 @@ public final class MainActivity extends ComponentActivity {
                     schedule.setFocusable(false);
                     if (cached != null) {
                         showSchedule(entries, cached);
-                        schedule.post(
-                                () ->
-                                        schedule.setFocusable(
-                                                entries.getHeight() > schedule.getHeight()));
+                        schedule.post(() ->
+                                schedule.setFocusable(entries.getHeight() > schedule.getHeight()));
                     } else {
                         scheduleMessage(entries, R.string.guide_loading);
                         ui.postDelayed(fetch, 150);
                     }
                 };
         retry.setOnClickListener(view -> load.run());
-        earlier.setOnClickListener(
-                view -> {
-                    window[0] = Math.max(initial, window[0] - step);
-                    load.run();
-                });
-        later.setOnClickListener(
-                view -> {
-                    window[0] = Math.min(limit, window[0] + step);
-                    load.run();
-                });
-        now.setOnClickListener(
-                view -> {
-                    window[0] =
-                            Math.max(
-                                    initial,
-                                    Math.min(limit, GuideCache.window(System.currentTimeMillis())));
-                    load.run();
-                });
+        earlier.setOnClickListener(view -> {
+            window[0] = Math.max(initial, window[0] - step);
+            load.run();
+        });
+        later.setOnClickListener(view -> {
+            window[0] = Math.min(limit, window[0] + step);
+            load.run();
+        });
+        now.setOnClickListener(view -> {
+            window[0] =
+                    Math.max(
+                            initial,
+                            Math.min(limit, GuideCache.window(System.currentTimeMillis())));
+            load.run();
+        });
         dialog.onDismiss(cancel);
         load.run();
         dialog.show(later);
@@ -1796,10 +1734,13 @@ public final class MainActivity extends ComponentActivity {
 
     void showPrivacyPolicy() {
         TvDialog dialog = new TvDialog(this, getString(R.string.privacy_policy));
-        TextView policy = text(
-                TextUtils.join("\n\n", getResources().getStringArray(R.array.privacy_policy_sections)),
-                17,
-                TEXT);
+        TextView policy =
+                text(
+                        TextUtils.join(
+                                "\n\n",
+                                getResources().getStringArray(R.array.privacy_policy_sections)),
+                        17,
+                        TEXT);
         var scroll = dialog.scroll(policy, 280);
         scroll.setFocusable(true);
         dialog.add(button(R.string.close, dialog::dismiss), 8);
@@ -1817,14 +1758,13 @@ public final class MainActivity extends ComponentActivity {
                 dialog.action(
                         R.string.refresh_channels,
                         () ->
-                                requestLocalNetwork(
-                                        granted -> {
-                                            if (!granted) {
-                                                toast(getString(R.string.local_network_access));
-                                                return;
-                                            }
-                                            loadCatalog();
-                                        }));
+                                requestLocalNetwork(granted -> {
+                                    if (!granted) {
+                                        toast(getString(R.string.local_network_access));
+                                        return;
+                                    }
+                                    loadCatalog();
+                                }));
         Button switchProfile = dialog.action(R.string.switch_profile, this::profiles);
         dialog.add(switchProfile, 16);
         dialog.add(refresh, 8);
@@ -1834,17 +1774,13 @@ public final class MainActivity extends ComponentActivity {
         filter.setTextColor(TEXT);
         filter.setBackground(focusBackground(BAR));
         filter.setChecked(qualityFilter);
-        filter.setOnCheckedChangeListener(
-                (button, checked) -> {
-                    qualityFilter = checked;
-                    getPreferences(MODE_PRIVATE)
-                            .edit()
-                            .putBoolean("qualityFilter", checked)
-                            .apply();
-                    reconcilePlayback();
-                    rebuildFavorites();
-                    renderFilter(false);
-                });
+        filter.setOnCheckedChangeListener((button, checked) -> {
+            qualityFilter = checked;
+            getPreferences(MODE_PRIVATE).edit().putBoolean("qualityFilter", checked).apply();
+            reconcilePlayback();
+            rebuildFavorites();
+            renderFilter(false);
+        });
         dialog.add(filter, 8);
         dialog.add(button(R.string.privacy_policy, this::showPrivacyPolicy), 8);
         dialog.add(button(R.string.close, dialog::dismiss), 8);
@@ -1912,11 +1848,10 @@ public final class MainActivity extends ComponentActivity {
                                                         : R.string.signed_out_locally);
                             }
                             String result = message;
-                            ui.post(
-                                    () -> {
-                                        signingOut = false;
-                                        if (!destroyed && api == null) showLogin(result);
-                                    });
+                            ui.post(() -> {
+                                signingOut = false;
+                                if (!destroyed && api == null) showLogin(result);
+                            });
                         }
                         : null);
         player = null;
@@ -2163,38 +2098,34 @@ public final class MainActivity extends ComponentActivity {
             row.addView(title);
             row.addView(info);
             ChannelRow holder = new ChannelRow(row, title, info);
-            row.setOnFocusChangeListener(
-                    (view, focused) -> {
-                        int p = holder.getBindingAdapterPosition();
-                        if (focused && p != RecyclerView.NO_POSITION) {
-                            if (pendingJump != null && !pendingJump.equals(channels.get(p).id()))
-                                return;
-                            focusedPosition = p;
-                            selected = channels.get(p);
-                            updateSelection();
-                            scheduleGuide();
-                        }
-                    });
-            row.setOnClickListener(
-                    v -> {
-                        int p = holder.getBindingAdapterPosition();
-                        if (p != RecyclerView.NO_POSITION) {
-                            pendingJump = null;
-                            focusedPosition = p;
-                            selected = channels.get(p);
-                            updateSelection();
-                            if (isPlayingSelection() && !player.primaryStatus().failed())
-                                setFullscreen(true);
-                            else tune(selected, false);
-                        }
-                    });
-            row.setOnLongClickListener(
-                    v -> {
-                        int p = holder.getBindingAdapterPosition();
-                        if (p == RecyclerView.NO_POSITION) return false;
-                        channelActions(channels.get(p));
-                        return true;
-                    });
+            row.setOnFocusChangeListener((view, focused) -> {
+                int p = holder.getBindingAdapterPosition();
+                if (focused && p != RecyclerView.NO_POSITION) {
+                    if (pendingJump != null && !pendingJump.equals(channels.get(p).id())) return;
+                    focusedPosition = p;
+                    selected = channels.get(p);
+                    updateSelection();
+                    scheduleGuide();
+                }
+            });
+            row.setOnClickListener(v -> {
+                int p = holder.getBindingAdapterPosition();
+                if (p != RecyclerView.NO_POSITION) {
+                    pendingJump = null;
+                    focusedPosition = p;
+                    selected = channels.get(p);
+                    updateSelection();
+                    if (isPlayingSelection() && !player.primaryStatus().failed())
+                        setFullscreen(true);
+                    else tune(selected, false);
+                }
+            });
+            row.setOnLongClickListener(v -> {
+                int p = holder.getBindingAdapterPosition();
+                if (p == RecyclerView.NO_POSITION) return false;
+                channelActions(channels.get(p));
+                return true;
+            });
             return holder;
         }
 

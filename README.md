@@ -15,10 +15,10 @@ TippyTV is a live TV player for Amazon Fire TV and Android TV. Bring a Jellyfin 
 
 ## Connect a source
 
-| Source | What to enter |
-| --- | --- |
-| Jellyfin | The server address and an account with Live TV access. Use your password or choose **Quick Connect** to approve sign-in on another device. |
-| Xtream | A profile name, the provider's base URL, username, and password. Include the port or path if your provider supplies one. |
+| Source       | What to enter                                                                                                                              |
+| ------------ | ------------------------------------------------------------------------------------------------------------------------------------------ |
+| Jellyfin     | The server address and an account with Live TV access. Use your password or choose **Quick Connect** to approve sign-in on another device. |
+| Xtream       | A profile name, the provider's base URL, username, and password. Include the port or path if your provider supplies one.                   |
 | M3U playlist | A profile name, the playlist URL, and an optional XMLTV guide URL. If you paste a GitHub Gist page URL, TippyTV lets you choose the files. |
 
 Use **Profile → Switch profile** to add or open another source.
@@ -31,15 +31,15 @@ The TV hosts the HTTPS form and keeps its certificate keys locally. First-time s
 
 ## Watch live TV
 
-| To… | Use… |
-| --- | --- |
-| Preview or go full screen | Press **Select** on a channel to preview it. Press it again to go full screen. |
-| Show playback controls | Press a direction or **Select** in full screen. Press **Back** to return to channels. |
-| Pause or resume | Press **Play/Pause** on the remote or use **Pause** and **Resume live** on screen. |
-| Browse a long lineup | Use **Search** for names and numbers, or **Jump** for letters and list endpoints. From a channel row, press **Left** for **−50** and **+50**, then press **Up** to focus the destination. |
-| Save a favorite | Hold **Select** and choose **Add favorite**. Switch between **Favorites** and **All channels** to change views and clear the search. |
-| Read the guide | Open **Guide**. **Earlier** and **Later** move three hours at a time. **Now** returns to the current window. |
-| Watch two channels | Hold **Select** on the second channel and choose **Play in inset**. **Swap** changes which channel has audio. **Close inset** stops the second stream. |
+| To…                       | Use…                                                                                                                                                                                      |
+| ------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Preview or go full screen | Press **Select** on a channel to preview it. Press it again to go full screen.                                                                                                            |
+| Show playback controls    | Press a direction or **Select** in full screen. Press **Back** to return to channels.                                                                                                     |
+| Pause or resume           | Press **Play/Pause** on the remote or use **Pause** and **Resume live** on screen.                                                                                                        |
+| Browse a long lineup      | Use **Search** for names and numbers, or **Jump** for letters and list endpoints. From a channel row, press **Left** for **−50** and **+50**, then press **Up** to focus the destination. |
+| Save a favorite           | Hold **Select** and choose **Add favorite**. Switch between **Favorites** and **All channels** to change views and clear the search.                                                      |
+| Read the guide            | Open **Guide**. **Earlier** and **Later** move three hours at a time. **Now** returns to the current window.                                                                              |
+| Watch two channels        | Hold **Select** on the second channel and choose **Play in inset**. **Swap** changes which channel has audio. **Close inset** stops the second stream.                                    |
 
 Jellyfin favorites sync to your server account. Xtream and playlist favorites stay with their profile on this TV. A provider rename or a change to a channel's identity can require adding it again.
 

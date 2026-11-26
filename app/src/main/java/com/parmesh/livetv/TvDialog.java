@@ -37,14 +37,14 @@ final class TvDialog {
         card.addView(heading);
         dialog.setTitle(title);
         dialog.setContentView(card);
-        dialog.setOnDismissListener(
-                unused -> {
-                    if (activity.dialogs.remove(this)
-                            && opener != null && opener.isShown() && opener.isEnabled())
-                        opener.requestFocusFromTouch();
-                    if (onDismiss != null) onDismiss.run();
-                    if (selection != null) selection.run();
-                });
+        dialog.setOnDismissListener(unused -> {
+            if (activity.dialogs.remove(this)
+                    && opener != null
+                    && opener.isShown()
+                    && opener.isEnabled()) opener.requestFocusFromTouch();
+            if (onDismiss != null) onDismiss.run();
+            if (selection != null) selection.run();
+        });
     }
 
     void add(View view, int top) {
@@ -116,10 +116,9 @@ final class TvDialog {
                 ViewGroup.LayoutParams.WRAP_CONTENT);
         if (focus != null) {
             focus.requestFocusFromTouch();
-            card.post(
-                    () -> {
-                        if (dialog.isShowing() && !card.hasFocus()) focus.requestFocusFromTouch();
-                    });
+            card.post(() -> {
+                if (dialog.isShowing() && !card.hasFocus()) focus.requestFocusFromTouch();
+            });
         }
     }
 }

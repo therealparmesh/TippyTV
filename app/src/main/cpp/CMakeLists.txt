@@ -1,8 +1,12 @@
 cmake_minimum_required(VERSION 3.22.1)
 project(tippympv C)
 add_library(tippympv SHARED mpv.c)
-target_compile_options(tippympv PRIVATE -Wall -Wextra -Werror -Wno-unused-parameter)
-target_include_directories(tippympv PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/../../../../third_party/mpv")
-target_link_directories(tippympv PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/../../../../build/mpv/jni/${ANDROID_ABI}")
+target_compile_options(tippympv PRIVATE -Wall -Wextra -Werror
+                                        -Wno-unused-parameter)
+target_include_directories(
+  tippympv PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/../../../../third_party/mpv")
+target_link_directories(
+  tippympv PRIVATE
+  "${CMAKE_CURRENT_SOURCE_DIR}/../../../../build/mpv/jni/${ANDROID_ABI}")
 target_link_libraries(tippympv mpv avcodec log)
 target_link_options(tippympv PRIVATE "-Wl,-z,max-page-size=16384")

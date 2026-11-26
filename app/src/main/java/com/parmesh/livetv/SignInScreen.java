@@ -87,21 +87,18 @@ final class SignInScreen {
         address.setImeOptions(EditorInfo.IME_ACTION_NEXT | EditorInfo.IME_FLAG_NO_EXTRACT_UI);
         Button quick = action(R.string.quick_connect, true, null);
         Button password = action(R.string.use_password, false, null);
-        address.setOnEditorActionListener(
-                (view, action, event) -> {
-                    if (action != EditorInfo.IME_ACTION_NEXT) return false;
-                    if (rememberAddress(address)) quick.requestFocus();
-                    return true;
-                });
-        quick.setOnClickListener(
-                view -> {
-                    if (!rememberAddress(address)) return;
-                    startCode();
-                });
-        password.setOnClickListener(
-                view -> {
-                    if (rememberAddress(address)) passwordPage();
-                });
+        address.setOnEditorActionListener((view, action, event) -> {
+            if (action != EditorInfo.IME_ACTION_NEXT) return false;
+            if (rememberAddress(address)) quick.requestFocus();
+            return true;
+        });
+        quick.setOnClickListener(view -> {
+            if (!rememberAddress(address)) return;
+            startCode();
+        });
+        password.setOnClickListener(view -> {
+            if (rememberAddress(address)) passwordPage();
+        });
         status(message, false);
         present(focusAddress ? address : quick);
     }
@@ -187,65 +184,46 @@ final class SignInScreen {
         Button connect = action(R.string.sign_in, true, null);
         MainActivity.submitOnDone(password, connect);
         action(R.string.change_server, false, this::changeServer);
-        connect.setOnClickListener(
-                view -> {
-                    username = user.getText().toString().trim();
-                    if (username.isBlank()) {
-                        status(activity.getString(R.string.enter_username), false);
-                        user.requestFocus();
-                        return;
-                    }
-                    WindowCompat.getInsetsController(activity.getWindow(), root)
-                            .hide(WindowInsetsCompat.Type.ime());
-                    connect.setEnabled(false);
-                    String name = username,
-                            secret = password.getText().toString(),
-                            address = server;
-                    int request = generation;
-                    activity.requestLocalNetwork(
-                            granted -> {
-                                if (request != generation) return;
-                                if (!granted) {
-                                    status(
-                                            activity.getString(R.string.local_network_access),
-                                            false);
+        connect.setOnClickListener(view -> {
+            username = user.getText().toString().trim();
+            if (username.isBlank()) {
+                status(activity.getString(R.string.enter_username), false);
+                user.requestFocus();
+                return;
+            }
+            WindowCompat.getInsetsController(activity.getWindow(), root)
+                    .hide(WindowInsetsCompat.Type.ime());
+            connect.setEnabled(false);
+            String name = username, secret = password.getText().toString(), address = server;
+            int request = generation;
+            activity.requestLocalNetwork(granted -> {
+                if (request != generation) return;
+                if (!granted) {
+                    status(activity.getString(R.string.local_network_access), false);
+                    connect.setEnabled(true);
+                    connect.requestFocus();
+                    return;
+                }
+                status(activity.getString(R.string.login_connecting), true);
+                pending =
+                        accounts.submit(() -> {
+                            try {
+                                authorized(request, Jellyfin.login(address, name, secret, device));
+                            } catch (Exception failure) {
+                                activity.runOnUiThread(() -> {
+                                    if (request != generation) return;
+                                    status(error(failure, true), false);
                                     connect.setEnabled(true);
-                                    connect.requestFocus();
-                                    return;
-                                }
-                                status(activity.getString(R.string.login_connecting), true);
-                                pending =
-                                        accounts.submit(
-                                                () -> {
-                                                    try {
-                                                        authorized(
-                                                                request,
-                                                                Jellyfin.login(
-                                                                        address, name, secret,
-                                                                        device));
-                                                    } catch (Exception failure) {
-                                                        activity.runOnUiThread(
-                                                                () -> {
-                                                                    if (request != generation)
-                                                                        return;
-                                                                    status(
-                                                                            error(failure, true),
-                                                                            false);
-                                                                    connect.setEnabled(true);
-                                                                    if (failure
-                                                                                    instanceof
-                                                                                    Jellyfin
-                                                                                                    .HttpFailure
-                                                                                            http
-                                                                            && http.status == 401) {
-                                                                        password.requestFocus();
-                                                                        password.selectAll();
-                                                                    } else connect.requestFocus();
-                                                                });
-                                                    }
-                                                });
-                            });
-                });
+                                    if (failure instanceof Jellyfin.HttpFailure http
+                                            && http.status == 401) {
+                                        password.requestFocus();
+                                        password.selectAll();
+                                    } else connect.requestFocus();
+                                });
+                            }
+                        });
+            });
+        });
         present(user);
         if (submittedPassword != null) {
             password.setText(submittedPassword);
@@ -272,53 +250,36 @@ final class SignInScreen {
         status(activity.getString(R.string.requesting_code), true);
         int request = generation;
         Jellyfin client = Jellyfin.signInClient(server, device);
-        activity.requestLocalNetwork(
-                granted -> {
-                    if (request != generation) return;
-                    if (!granted) {
-                        showCodeError(
-                                request,
-                                activity.getString(R.string.local_network_access),
-                                code,
-                                retry);
-                        return;
-                    }
-                    pending =
-                            accounts.submit(
-                                    () -> {
-                                        try {
-                                            Jellyfin.QuickConnect attempt =
-                                                    client.startQuickConnect();
-                                            activity.runOnUiThread(
-                                                    () -> {
-                                                        if (request != generation) return;
-                                                        code.setText(attempt.code());
-                                                        code.setVisibility(View.VISIBLE);
-                                                        status(
-                                                                activity.getString(
-                                                                        R.string
-                                                                                .waiting_for_approval),
-                                                                true);
-                                                        waitForApproval(
-                                                                client,
-                                                                attempt,
-                                                                request,
-                                                                SystemClock.elapsedRealtime()
-                                                                        + CODE_LIFETIME_MS,
-                                                                code,
-                                                                retry);
-                                                    });
-                                        } catch (Exception failure) {
-                                            activity.runOnUiThread(
-                                                    () ->
-                                                            showCodeError(
-                                                                    request,
-                                                                    error(failure, false),
-                                                                    code,
-                                                                    retry));
-                                        }
-                                    });
-                });
+        activity.requestLocalNetwork(granted -> {
+            if (request != generation) return;
+            if (!granted) {
+                showCodeError(
+                        request, activity.getString(R.string.local_network_access), code, retry);
+                return;
+            }
+            pending =
+                    accounts.submit(() -> {
+                        try {
+                            Jellyfin.QuickConnect attempt = client.startQuickConnect();
+                            activity.runOnUiThread(() -> {
+                                if (request != generation) return;
+                                code.setText(attempt.code());
+                                code.setVisibility(View.VISIBLE);
+                                status(activity.getString(R.string.waiting_for_approval), true);
+                                waitForApproval(
+                                        client,
+                                        attempt,
+                                        request,
+                                        SystemClock.elapsedRealtime() + CODE_LIFETIME_MS,
+                                        code,
+                                        retry);
+                            });
+                        } catch (Exception failure) {
+                            activity.runOnUiThread(() ->
+                                    showCodeError(request, error(failure, false), code, retry));
+                        }
+                    });
+        });
     }
 
     private void waitForApproval(
@@ -337,31 +298,23 @@ final class SignInScreen {
                         return;
                     }
                     pending =
-                            accounts.submit(
-                                    () -> {
-                                        try {
-                                            if (client.quickConnectAuthorized(attempt))
-                                                authorized(
-                                                        request,
-                                                        client.finishQuickConnect(attempt));
-                                            else
-                                                activity.runOnUiThread(
-                                                        () -> {
-                                                            if (request == generation)
-                                                                waitForApproval(
-                                                                        client, attempt, request,
-                                                                        deadline, code, retry);
-                                                        });
-                                        } catch (Exception failure) {
-                                            activity.runOnUiThread(
-                                                    () ->
-                                                            showCodeError(
-                                                                    request,
-                                                                    error(failure, false),
-                                                                    code,
-                                                                    retry));
-                                        }
-                                    });
+                            accounts.submit(() -> {
+                                try {
+                                    if (client.quickConnectAuthorized(attempt))
+                                        authorized(request, client.finishQuickConnect(attempt));
+                                    else
+                                        activity.runOnUiThread(() -> {
+                                            if (request == generation)
+                                                waitForApproval(
+                                                        client, attempt, request, deadline, code,
+                                                        retry);
+                                        });
+                                } catch (Exception failure) {
+                                    activity.runOnUiThread(() ->
+                                            showCodeError(
+                                                    request, error(failure, false), code, retry));
+                                }
+                            });
                 };
         root.postDelayed(poll, POLL_MS);
     }
@@ -375,21 +328,20 @@ final class SignInScreen {
     }
 
     private void authorized(int request, Jellyfin.Session session) {
-        activity.runOnUiThread(
-                () -> {
-                    if (request == generation) activity.signedIn(session);
-                    else {
-                        Runnable logout =
-                                () -> {
-                                    try {
-                                        new Jellyfin(session).logout();
-                                    } catch (java.io.IOException ignored) {
-                                        /* The canceled session was never stored. */
-                                    }
-                                };
-                        new Thread(logout, "jellyfin-sign-in-cleanup").start();
-                    }
-                });
+        activity.runOnUiThread(() -> {
+            if (request == generation) activity.signedIn(session);
+            else {
+                Runnable logout =
+                        () -> {
+                            try {
+                                new Jellyfin(session).logout();
+                            } catch (java.io.IOException ignored) {
+                                /* The canceled session was never stored. */
+                            }
+                        };
+                new Thread(logout, "jellyfin-sign-in-cleanup").start();
+            }
+        });
     }
 
     private String error(Exception failure, boolean password) {
@@ -447,22 +399,20 @@ final class SignInScreen {
         scroll.setVerticalScrollBarEnabled(false);
         scroll.addView(card);
         root.addView(scroll, new FrameLayout.LayoutParams(activity.dp(530), -2, Gravity.CENTER));
-        root.addOnLayoutChangeListener(
-                (v, l, t, r, b, ol, ot, or, ob) -> {
-                    int width = Math.max(0, Math.min(activity.dp(530), r - l - activity.dp(36)));
-                    ViewGroup.LayoutParams size = scroll.getLayoutParams();
-                    if (size.width != width) {
-                        size.width = width;
-                        scroll.setLayoutParams(size);
-                    }
-                });
+        root.addOnLayoutChangeListener((v, l, t, r, b, ol, ot, or, ob) -> {
+            int width = Math.max(0, Math.min(activity.dp(530), r - l - activity.dp(36)));
+            ViewGroup.LayoutParams size = scroll.getLayoutParams();
+            if (size.width != width) {
+                size.width = width;
+                scroll.setLayoutParams(size);
+            }
+        });
         activity.showScreen(root);
         if (target != null) {
             target.requestFocusFromTouch();
-            target.post(
-                    () -> {
-                        if (target.isShown() && !card.hasFocus()) target.requestFocusFromTouch();
-                    });
+            target.post(() -> {
+                if (target.isShown() && !card.hasFocus()) target.requestFocusFromTouch();
+            });
         }
     }
 

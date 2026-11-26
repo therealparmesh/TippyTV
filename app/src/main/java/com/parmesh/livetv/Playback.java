@@ -269,50 +269,47 @@ final class Playback {
                 recovering ? Status.RECONNECTING : fallback ? Status.COMPATIBLE : Status.TUNING;
         changed.run();
         boolean small = slot == secondary;
-        slot.tuner.execute(
-                () -> {
+        slot.tuner.execute(() -> {
+            if (slot.generation != generation) return;
+            Jellyfin.Stream opened;
+            try {
+                opened = api.open(channel, fallback, small, refreshSource);
+            } catch (Exception error) {
+                ui.post(() -> {
                     if (slot.generation != generation) return;
-                    Jellyfin.Stream opened;
-                    try {
-                        opened = api.open(channel, fallback, small, refreshSource);
-                    } catch (Exception error) {
-                        ui.post(
-                                () -> {
-                                    if (slot.generation != generation) return;
-                                    if (!fallback && error instanceof Jellyfin.NoCompatibleStream) {
-                                        request(slot, api, channel, true, recovering);
-                                    } else if (recovering
-                                            && error instanceof java.io.IOException
-                                            && !(error instanceof Jellyfin.NoCompatibleStream)
-                                            && (!(error instanceof Jellyfin.HttpFailure http)
-                                                    || http.status == 408
-                                                    || http.status == 429
-                                                    || http.status >= 500)) {
-                                        reconnectLater(slot, MAX_RETRY_MS);
-                                    } else {
-                                        slot.status = Status.TUNE_FAILED;
-                                        changed.run();
-                                    }
-                                });
-                        return;
+                    if (!fallback && error instanceof Jellyfin.NoCompatibleStream) {
+                        request(slot, api, channel, true, recovering);
+                    } else if (recovering
+                            && error instanceof java.io.IOException
+                            && !(error instanceof Jellyfin.NoCompatibleStream)
+                            && (!(error instanceof Jellyfin.HttpFailure http)
+                                    || http.status == 408
+                                    || http.status == 429
+                                    || http.status >= 500)) {
+                        reconnectLater(slot, MAX_RETRY_MS);
+                    } else {
+                        slot.status = Status.TUNE_FAILED;
+                        changed.run();
                     }
-                    if (slot.generation != generation) {
-                        api.close(opened);
-                        return;
-                    }
-                    ui.post(
-                            () -> {
-                                if (slot.generation != generation) {
-                                    slot.tuner.execute(() -> api.close(opened));
-                                    return;
-                                }
-                                try {
-                                    start(slot, opened, generation);
-                                } catch (RuntimeException error) {
-                                    streamFailed(slot);
-                                }
-                            });
                 });
+                return;
+            }
+            if (slot.generation != generation) {
+                api.close(opened);
+                return;
+            }
+            ui.post(() -> {
+                if (slot.generation != generation) {
+                    slot.tuner.execute(() -> api.close(opened));
+                    return;
+                }
+                try {
+                    start(slot, opened, generation);
+                } catch (RuntimeException error) {
+                    streamFailed(slot);
+                }
+            });
+        });
     }
 
     private void start(Slot slot, Jellyfin.Stream stream, long generation) {
@@ -322,47 +319,34 @@ final class Playback {
         changed.run();
         MpvView surface = slot.surface;
         surface.aspect(0);
-        surface.whenReady(
-                () -> {
-                    if (slot.generation != generation) return;
-                    MpvView.Target target = surface.acquire();
-                    if (target == null) return;
-                    slot.tuner.execute(
-                            () -> {
-                                MpvPlayer opened;
-                                try {
-                                    opened = new MpvPlayer(context, target, stream);
-                                } catch (java.io.IOException
-                                        | RuntimeException
-                                        | LinkageError error) {
-                                    target.release();
-                                    android.util.Log.e(
-                                            "TippyMpv", "Player initialization failed", error);
-                                    ui.post(
-                                            () -> {
-                                                if (slot.generation == generation)
-                                                    streamFailed(slot);
-                                            });
-                                    return;
-                                }
-                                boolean stale;
-                                synchronized (slot) {
-                                    stale = slot.generation != generation;
-                                    if (!stale) slot.player = opened;
-                                }
-                                if (stale) {
-                                    opened.close();
-                                    return;
-                                }
-                                ui.post(
-                                        () ->
-                                                monitor(
-                                                        slot,
-                                                        opened,
-                                                        generation,
-                                                        stream.compatible()));
-                            });
-                });
+        surface.whenReady(() -> {
+            if (slot.generation != generation) return;
+            MpvView.Target target = surface.acquire();
+            if (target == null) return;
+            slot.tuner.execute(() -> {
+                MpvPlayer opened;
+                try {
+                    opened = new MpvPlayer(context, target, stream);
+                } catch (java.io.IOException | RuntimeException | LinkageError error) {
+                    target.release();
+                    android.util.Log.e("TippyMpv", "Player initialization failed", error);
+                    ui.post(() -> {
+                        if (slot.generation == generation) streamFailed(slot);
+                    });
+                    return;
+                }
+                boolean stale;
+                synchronized (slot) {
+                    stale = slot.generation != generation;
+                    if (!stale) slot.player = opened;
+                }
+                if (stale) {
+                    opened.close();
+                    return;
+                }
+                ui.post(() -> monitor(slot, opened, generation, stream.compatible()));
+            });
+        });
     }
 
     private void monitor(Slot slot, MpvPlayer opened, long generation, boolean compatible) {
@@ -577,12 +561,10 @@ final class Playback {
     private void closeTuner(Slot slot, Runnable closed) {
         // A finished open can already have posted its stream handoff to the UI.
         // Give that handoff time to queue its release before shutting down the tuner.
-        slot.tuner.execute(
-                () ->
-                        ui.post(
-                                () -> {
-                                    slot.tuner.execute(closed);
-                                    slot.tuner.shutdown();
-                                }));
+        slot.tuner.execute(() ->
+                ui.post(() -> {
+                    slot.tuner.execute(closed);
+                    slot.tuner.shutdown();
+                }));
     }
 }

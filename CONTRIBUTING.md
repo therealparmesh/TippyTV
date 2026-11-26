@@ -2,15 +2,15 @@
 
 ## Prerequisites
 
-| Tool | Version |
-| --- | --- |
-| JDK | 21 |
-| Android SDK | 37 |
-| Android NDK | 28.2.13676358 |
-| CMake | 3.22.1 |
-| Go | 1.27 |
-| Python | 3 |
-| FFmpeg | Required for emulator fixtures |
+| Tool        | Version                        |
+| ----------- | ------------------------------ |
+| JDK         | 21                             |
+| Android SDK | 37                             |
+| Android NDK | 28.2.13676358                  |
+| CMake       | 3.22.1                         |
+| Go          | 1.27                           |
+| Python      | 3                              |
+| FFmpeg      | Required for emulator fixtures |
 
 Set `ANDROID_HOME` to your SDK directory and put `adb` on your `PATH`. Run the commands below from the repository root.
 

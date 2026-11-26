@@ -690,7 +690,10 @@ try:
     focused("1  Amber One")
 finally:
     request("/qa/channel_failure?enabled=0", {})
-print("PASS: failed refreshes preserve the lineup, and a reorder preserves focus", flush=True)
+print(
+    "PASS: failed refreshes preserve the lineup, and a reorder preserves focus",
+    flush=True,
+)
 
 # Playlist and Xtream profiles share a snapshot format containing stream and guide IDs.
 tap_text("Profile")
@@ -719,7 +722,9 @@ def playlist_generation(expected="LIVE", after=0):
             if generation > after:
                 return generation
         time.sleep(0.5)
-    raise AssertionError(f"Playlist playback did not reach {expected} after generation {after}")
+    raise AssertionError(
+        f"Playlist playback did not reach {expected} after generation {after}"
+    )
 
 
 try:
@@ -737,7 +742,9 @@ try:
     playlist_generation("RETRY_WAIT", after=generation - 1)
     wait_started = time.monotonic()
     generation = playlist_generation(None, after=generation)
-    assert time.monotonic() - wait_started >= 4, "A brief recovery reset the retry delay"
+    assert time.monotonic() - wait_started >= 4, (
+        "A brief recovery reset the retry delay"
+    )
     playlist_generation(after=generation - 1)
     assert request("/qa/status")["playlist_requests"] == playlist_requests, (
         "Reopening a known URL after EOF tried to download the playlist"
@@ -769,4 +776,7 @@ try:
     expect_text("Add a profile", "M3U playlist")
 finally:
     request("/qa/channel_failure?enabled=0", {})
-print("PASS: cached playlist plays during refresh; replaced channels lose stale playback and favorites", flush=True)
+print(
+    "PASS: cached playlist plays during refresh; replaced channels lose stale playback and favorites",
+    flush=True,
+)

@@ -119,15 +119,14 @@ final class PlaylistSetup {
                                 }
                             }
                             dialog.dismiss();
-                            activity.requestLocalNetwork(
-                                    ok -> {
-                                        if (!ok) show();
-                                        else if (xtream)
-                                            checkPlaylist(
-                                                    Jellyfin.Session.xtream(
-                                                            name, base, username, password));
-                                        else choose(location, false);
-                                    });
+                            activity.requestLocalNetwork(ok -> {
+                                if (!ok) show();
+                                else if (xtream)
+                                    checkPlaylist(
+                                            Jellyfin.Session.xtream(
+                                                    name, base, username, password));
+                                else choose(location, false);
+                            });
                         });
         MainActivity.submitOnDone(xtream ? secret : detail, next);
         dialog.add(next, 10);
@@ -226,11 +225,10 @@ final class PlaylistSetup {
             rows.addView(item);
         }
         if (guideStep) picker.add(picker.action(R.string.skip_guide, () -> selected("", true)), 8);
-        picker.onCancel(
-                () -> {
-                    if (guideStep && guide.isEmpty()) pickFile(false);
-                    else show();
-                });
+        picker.onCancel(() -> {
+            if (guideStep && guide.isEmpty()) pickFile(false);
+            else show();
+        });
         picker.show(rows.getChildAt(0));
     }
 
@@ -271,30 +269,26 @@ final class PlaylistSetup {
         dialog.add(cancel, 8);
         dialog.onCancel(this::show);
         dialog.show(cancel);
-        worker.execute(
-                () -> {
-                    Runnable finish;
-                    try {
-                        T value = request.call();
-                        finish = () -> success.accept(value);
-                    } catch (Exception failure) {
-                        finish =
-                                () -> {
-                                    android.widget.Toast.makeText(
-                                                    activity,
-                                                    error,
-                                                    android.widget.Toast.LENGTH_LONG)
-                                            .show();
-                                    show();
-                                };
-                    }
-                    Runnable result = finish;
-                    activity.runOnUiThread(
-                            () -> {
-                                if (activity.isDestroyed() || !dialog.isShowing()) return;
-                                dialog.dismiss();
-                                result.run();
-                            });
-                });
+        worker.execute(() -> {
+            Runnable finish;
+            try {
+                T value = request.call();
+                finish = () -> success.accept(value);
+            } catch (Exception failure) {
+                finish =
+                        () -> {
+                            android.widget.Toast.makeText(
+                                            activity, error, android.widget.Toast.LENGTH_LONG)
+                                    .show();
+                            show();
+                        };
+            }
+            Runnable result = finish;
+            activity.runOnUiThread(() -> {
+                if (activity.isDestroyed() || !dialog.isShowing()) return;
+                dialog.dismiss();
+                result.run();
+            });
+        });
     }
 }

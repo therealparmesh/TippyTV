@@ -135,7 +135,9 @@ class Handler(BaseHTTPRequestHandler):
             index = int(q.get("startIndex", ["0"])[0])
             count = int(q.get("limit", ["256"])[0])
             with channel_changes:
-                channel_changes.wait_for(lambda: state["channel_failure"] != "hold", timeout=20)
+                channel_changes.wait_for(
+                    lambda: state["channel_failure"] != "hold", timeout=20
+                )
                 token = (
                     self.headers.get("Authorization", "")
                     .split('Token="')[-1]
@@ -386,7 +388,15 @@ class Handler(BaseHTTPRequestHandler):
         if path == "/qa/channel_failure":
             mode = q.get("mode", ["outage"])[0] if q.get("enabled") != ["0"] else ""
             if mode not in (
-                "", "outage", "empty", "repeat", "hold", "expired", "changed", "reordered", "shrunk"
+                "",
+                "outage",
+                "empty",
+                "repeat",
+                "hold",
+                "expired",
+                "changed",
+                "reordered",
+                "shrunk",
             ):
                 return self.result(400, {})
             with channel_changes:

@@ -47,16 +47,18 @@ static void failure(JNIEnv *env, const char *message) {
         (*env)->ThrowNew(env, type, message);
 }
 
-JNIEXPORT void JNICALL Java_com_parmesh_livetv_MpvPlayer_environment(JNIEnv *env, jclass type,
-                                                                     jobject context) {
+JNIEXPORT void JNICALL Java_com_parmesh_livetv_MpvPlayer_environment(
+    JNIEnv *env, jclass type, jobject context) {
     JavaVM *vm = NULL;
     (*env)->GetJavaVM(env, &vm);
     jobject app = (*env)->NewGlobalRef(env, context);
     if (!app)
         return;
     setlocale(LC_NUMERIC, "C");
-    // Kept for the process lifetime: FFmpeg may access this from decoder threads.
-    if (av_jni_set_java_vm(vm, NULL) < 0 || av_jni_set_android_app_ctx(app, NULL) < 0) {
+    // Kept for the process lifetime: FFmpeg may access this from decoder
+    // threads.
+    if (av_jni_set_java_vm(vm, NULL) < 0 ||
+        av_jni_set_android_app_ctx(app, NULL) < 0) {
         (*env)->DeleteGlobalRef(env, app);
         failure(env, "Cannot initialize Android decoder context");
     }
@@ -66,15 +68,16 @@ static int option(JNIEnv *env, Player *p, const char *key, const char *value) {
     int result = mpv_set_option_string(p->mpv, key, value);
     if (result < 0) {
         char message[160];
-        snprintf(message, sizeof(message), "mpv option %s: %s", key, mpv_error_string(result));
+        snprintf(message, sizeof(message), "mpv option %s: %s", key,
+                 mpv_error_string(result));
         failure(env, message);
     }
     return result;
 }
 
-JNIEXPORT jlong JNICALL Java_com_parmesh_livetv_MpvPlayer_create(JNIEnv *env, jclass type,
-                                                                 jobject surface, jstring url,
-                                                                 jstring agent, jstring ca) {
+JNIEXPORT jlong JNICALL Java_com_parmesh_livetv_MpvPlayer_create(
+    JNIEnv *env, jclass type, jobject surface, jstring url, jstring agent,
+    jstring ca) {
     Player *p = calloc(1, sizeof(*p));
     if (!p) {
         failure(env, "Cannot allocate mpv player");
@@ -84,11 +87,13 @@ JNIEXPORT jlong JNICALL Java_com_parmesh_livetv_MpvPlayer_create(JNIEnv *env, jc
     p->surface = (*env)->NewGlobalRef(env, surface);
     if (!p->mpv || !p->surface)
         goto fail;
-    // Route nested HLS requests through FFmpeg so the retry policy applies consistently.
-    // Retry sleeps total at most 10s; these do not include time spent in network I/O.
-    const char *retries =
-        "reconnect=1,reconnect_streamed=1,reconnect_on_network_error=1,reconnect_on_http_error=5xx,"
-        "reconnect_delay_max=4,reconnect_max_retries=4,reconnect_delay_total_max=10";
+    // Route nested HLS requests through FFmpeg so the retry policy applies
+    // consistently. Retry sleeps total at most 10s; these do not include time
+    // spent in network I/O.
+    const char *retries = "reconnect=1,reconnect_streamed=1,reconnect_on_"
+                          "network_error=1,reconnect_on_http_error=5xx,"
+                          "reconnect_delay_max=4,reconnect_max_retries=4,"
+                          "reconnect_delay_total_max=10";
     const char *options[][2] = {
         {"curl-enabled", "no"},
         {"config", "no"},
@@ -134,16 +139,20 @@ JNIEXPORT jlong JNICALL Java_com_parmesh_livetv_MpvPlayer_create(JNIEnv *env, jc
             goto fail;
     }
     int64_t wid = (intptr_t)p->surface;
-    if (mpv_set_option(p->mpv, "wid", MPV_FORMAT_INT64, &wid) < 0 || mpv_initialize(p->mpv) < 0)
+    if (mpv_set_option(p->mpv, "wid", MPV_FORMAT_INT64, &wid) < 0 ||
+        mpv_initialize(p->mpv) < 0)
         goto fail;
     mpv_observe_property(p->mpv, 0, "paused-for-cache", MPV_FORMAT_FLAG);
     mpv_observe_property(p->mpv, 1, "video-params/aspect", MPV_FORMAT_DOUBLE);
-    // Observe on the worker at initialization; never synchronously query the core
-    // from Android's UI thread, including through dumpsys diagnostics.
+    // Observe on the worker at initialization; never synchronously query the
+    // core from Android's UI thread, including through dumpsys diagnostics.
     for (size_t i = 0; i < METRIC_COUNT; i++)
-        mpv_observe_property(p->mpv, METRIC_EVENT + i, metrics[i], MPV_FORMAT_DOUBLE);
-    mpv_observe_property(p->mpv, DECODER_EVENT, "hwdec-current", MPV_FORMAT_STRING);
-    mpv_observe_property(p->mpv, 2, "current-tracks/video/image", MPV_FORMAT_FLAG);
+        mpv_observe_property(p->mpv, METRIC_EVENT + i, metrics[i],
+                             MPV_FORMAT_DOUBLE);
+    mpv_observe_property(p->mpv, DECODER_EVENT, "hwdec-current",
+                         MPV_FORMAT_STRING);
+    mpv_observe_property(p->mpv, 2, "current-tracks/video/image",
+                         MPV_FORMAT_FLAG);
     const char *path = (*env)->GetStringUTFChars(env, url, NULL);
     if (!path)
         goto fail;
@@ -165,7 +174,8 @@ fail:
     return 0;
 }
 
-JNIEXPORT jint JNICALL Java_com_parmesh_livetv_MpvPlayer_poll(JNIEnv *env, jclass type,
+JNIEXPORT jint JNICALL Java_com_parmesh_livetv_MpvPlayer_poll(JNIEnv *env,
+                                                              jclass type,
                                                               jlong handle) {
     Player *p = (Player *)(intptr_t)handle;
     for (int i = 0; i < 64; i++) {
@@ -176,24 +186,28 @@ JNIEXPORT jint JNICALL Java_com_parmesh_livetv_MpvPlayer_poll(JNIEnv *env, jclas
             p->playing = 1;
         if (event->event_id == MPV_EVENT_PROPERTY_CHANGE) {
             mpv_event_property *property = event->data;
-            if (event->reply_userdata == 0 && property->format == MPV_FORMAT_FLAG && property->data)
+            if (event->reply_userdata == 0 &&
+                property->format == MPV_FORMAT_FLAG && property->data)
                 p->buffering = *(int *)property->data;
-            if (event->reply_userdata == 1 && property->format == MPV_FORMAT_DOUBLE &&
-                property->data)
+            if (event->reply_userdata == 1 &&
+                property->format == MPV_FORMAT_DOUBLE && property->data)
                 p->aspect = *(double *)property->data;
             if (event->reply_userdata == 2)
-                p->still_image =
-                    property->format == MPV_FORMAT_FLAG && property->data && *(int *)property->data;
-            if (event->reply_userdata >= METRIC_EVENT && event->reply_userdata < DECODER_EVENT) {
+                p->still_image = property->format == MPV_FORMAT_FLAG &&
+                                 property->data && *(int *)property->data;
+            if (event->reply_userdata >= METRIC_EVENT &&
+                event->reply_userdata < DECODER_EVENT) {
                 size_t i = event->reply_userdata - METRIC_EVENT;
-                p->metric_available[i] = property->format == MPV_FORMAT_DOUBLE && property->data;
+                p->metric_available[i] =
+                    property->format == MPV_FORMAT_DOUBLE && property->data;
                 if (p->metric_available[i])
                     p->metrics[i] = *(double *)property->data;
             }
             if (event->reply_userdata == DECODER_EVENT) {
-                const char *decoder = property->format == MPV_FORMAT_STRING && property->data
-                                          ? *(char **)property->data
-                                          : "";
+                const char *decoder =
+                    property->format == MPV_FORMAT_STRING && property->data
+                        ? *(char **)property->data
+                        : "";
                 snprintf(p->decoder, sizeof(p->decoder), "%s", decoder);
             }
         }
@@ -206,7 +220,8 @@ JNIEXPORT jint JNICALL Java_com_parmesh_livetv_MpvPlayer_poll(JNIEnv *env, jclas
                            end->error == MPV_ERROR_AO_INIT_FAILED ||
                            end->error == MPV_ERROR_UNSUPPORTED;
                 __android_log_print(ANDROID_LOG_INFO, "TippyMpv",
-                                    "Stream ended: reason=%d error=%d", end->reason, end->error);
+                                    "Stream ended: reason=%d error=%d",
+                                    end->reason, end->error);
             }
         }
         if (event->event_id == MPV_EVENT_COMMAND_REPLY && event->error < 0)
@@ -215,28 +230,29 @@ JNIEXPORT jint JNICALL Java_com_parmesh_livetv_MpvPlayer_poll(JNIEnv *env, jclas
     return p->ended | (p->buffering << 1) | (p->playing << 2) | (p->fatal << 3);
 }
 
-JNIEXPORT jdouble JNICALL Java_com_parmesh_livetv_MpvPlayer_aspect(JNIEnv *env, jclass type,
-                                                                   jlong handle) {
+JNIEXPORT jdouble JNICALL Java_com_parmesh_livetv_MpvPlayer_aspect(
+    JNIEnv *env, jclass type, jlong handle) {
     return ((Player *)(intptr_t)handle)->aspect;
 }
 
-JNIEXPORT jdouble JNICALL Java_com_parmesh_livetv_MpvPlayer_radioPosition(JNIEnv *env, jclass type,
-                                                                          jlong handle) {
+JNIEXPORT jdouble JNICALL Java_com_parmesh_livetv_MpvPlayer_radioPosition(
+    JNIEnv *env, jclass type, jlong handle) {
     Player *p = (Player *)(intptr_t)handle;
     if (p->metric_available[VIDEO_ID_METRIC] && !p->still_image)
         return NAN;
-    return p->metric_available[AUDIO_PTS_METRIC] ? p->metrics[AUDIO_PTS_METRIC] : NAN;
+    return p->metric_available[AUDIO_PTS_METRIC] ? p->metrics[AUDIO_PTS_METRIC]
+                                                 : NAN;
 }
 
-JNIEXPORT jdouble JNICALL Java_com_parmesh_livetv_MpvPlayer_buffered(JNIEnv *env, jclass type,
-                                                                     jlong handle) {
+JNIEXPORT jdouble JNICALL Java_com_parmesh_livetv_MpvPlayer_buffered(
+    JNIEnv *env, jclass type, jlong handle) {
     Player *p = (Player *)(intptr_t)handle;
-    return p->metric_available[BUFFERED_METRIC] ? p->metrics[BUFFERED_METRIC] : -1;
+    return p->metric_available[BUFFERED_METRIC] ? p->metrics[BUFFERED_METRIC]
+                                                : -1;
 }
 
-JNIEXPORT void JNICALL Java_com_parmesh_livetv_MpvPlayer_property(JNIEnv *env, jclass type,
-                                                                  jlong handle, jstring name,
-                                                                  jstring value) {
+JNIEXPORT void JNICALL Java_com_parmesh_livetv_MpvPlayer_property(
+    JNIEnv *env, jclass type, jlong handle, jstring name, jstring value) {
     Player *p = (Player *)(intptr_t)handle;
     const char *key = (*env)->GetStringUTFChars(env, name, NULL);
     if (!key)
@@ -249,24 +265,26 @@ JNIEXPORT void JNICALL Java_com_parmesh_livetv_MpvPlayer_property(JNIEnv *env, j
     (*env)->ReleaseStringUTFChars(env, name, key);
 }
 
-JNIEXPORT void JNICALL Java_com_parmesh_livetv_MpvPlayer_destroy(JNIEnv *env, jclass type,
+JNIEXPORT void JNICALL Java_com_parmesh_livetv_MpvPlayer_destroy(JNIEnv *env,
+                                                                 jclass type,
                                                                  jlong handle) {
     Player *p = (Player *)(intptr_t)handle;
-    // This runs on the slot's worker, after UI polling and commands have stopped.
+    // This runs on the slot's worker, after UI polling and commands have
+    // stopped.
     mpv_terminate_destroy(p->mpv);
     (*env)->DeleteGlobalRef(env, p->surface);
     free(p);
 }
 
-JNIEXPORT jstring JNICALL Java_com_parmesh_livetv_MpvPlayer_snapshot(JNIEnv *env, jclass type,
-                                                                     jlong handle) {
+JNIEXPORT jstring JNICALL Java_com_parmesh_livetv_MpvPlayer_snapshot(
+    JNIEnv *env, jclass type, jlong handle) {
     Player *p = (Player *)(intptr_t)handle;
     char text[768];
     size_t offset = 0;
     for (size_t i = 0; i < METRIC_COUNT; i++) {
         if (p->metric_available[i]) {
-            int written = snprintf(text + offset, sizeof(text) - offset, "%s=%.3f ", metrics[i],
-                                   p->metrics[i]);
+            int written = snprintf(text + offset, sizeof(text) - offset,
+                                   "%s=%.3f ", metrics[i], p->metrics[i]);
             if (written < 0 || (size_t)written >= sizeof(text) - offset) {
                 offset = sizeof(text) - 1;
                 break;
