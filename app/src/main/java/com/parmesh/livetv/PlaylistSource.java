@@ -429,7 +429,7 @@ final class PlaylistSource implements TvSource {
                     }
                 }
             } catch (org.xmlpull.v1.XmlPullParserException e) {
-                throw new IOException("Could not read programme guide.", e);
+                throw new IOException("Could not read program guide.", e);
             }
         finishGuide(result);
         listings = result;
@@ -448,7 +448,7 @@ final class PlaylistSource implements TvSource {
     static void finishGuide(Map<String, List<Channels.Program>> rows) {
         for (List<Channels.Program> row : rows.values()) {
             row.sort(Comparator.comparingLong(Channels.Program::start));
-            // XMLTV permits an omitted stop. The next programme supplies its boundary.
+            // XMLTV permits an omitted stop. The next program supplies its boundary.
             for (int i = 0; i + 1 < row.size(); i++) {
                 Channels.Program p = row.get(i);
                 if (p.end() < 0)

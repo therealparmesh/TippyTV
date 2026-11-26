@@ -43,7 +43,7 @@ public class ChannelsTest {
     }
 
     @Test
-    public void programmeBoundariesAndMalformedTimes() {
+    public void programBoundariesAndMalformedTimes() {
         var a = new Channels.Program("First", 10, 20);
         var b = new Channels.Program("Second", 20, 40);
         var schedule = Channels.sortedPrograms(new ArrayList<>(List.of(b, a)));

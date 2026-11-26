@@ -125,9 +125,9 @@ class Handler(BaseHTTPRequestHandler):
                 return time.strftime("%Y%m%d%H%M%S +0000", time.gmtime(now + offset))
 
             title = (
-                "Updated programme"
+                "Updated program"
                 if state["channel_failure"] in ("hold", "outage")
-                else "First programme"
+                else "First program"
             )
             guide = f'<tv><programme channel="a" start="{stamp(-600)}" stop="{stamp(600)}"><title>{title}</title></programme></tv>'
             return self.result(200, guide.encode(), "application/xml")

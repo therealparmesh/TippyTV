@@ -710,7 +710,7 @@ for label, value in (
     if b"mInputShown=true" in adb("shell", "dumpsys", "input_method"):
         key(4)
 tap_text("Continue")
-expect_text("Playlist One", "Now · First programme")
+expect_text("Playlist One", "Now · First program")
 
 
 def playlist_generation(expected="LIVE", after=0):
@@ -733,7 +733,7 @@ try:
     expect_text("1 channel · Refreshing…", "Playlist One")
     tap_text("Playlist One")
     request("/qa/channel_failure?mode=outage", {})
-    expect_text("1 channel · Refresh needed", "Now · Updated programme")
+    expect_text("1 channel · Refresh needed", "Now · Updated program")
     generation = playlist_generation()
     playlist_requests = request("/qa/status")["playlist_requests"]
     request("/qa/playlist_eof", {})

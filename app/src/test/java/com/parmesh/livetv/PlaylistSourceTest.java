@@ -87,7 +87,7 @@ public class PlaylistSourceTest {
     }
 
     @Test
-    public void missingGuideStopUsesNextProgrammeInTimeOrder() {
+    public void missingGuideStopUsesNextProgramInTimeOrder() {
         var row =
                 new ArrayList<>(
                         List.of(

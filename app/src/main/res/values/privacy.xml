@@ -5,7 +5,7 @@
         <item
     >TippyTV plays live TV from sources you configure. TippyTV has no central user account, advertising, or in-app analytics. This policy describes TippyTV. The app store and the services you choose operate under their own privacy policies.</item>
         <item
-    >Your TV stores your profile details, including server addresses, playlists and guide URLs, and the tokens or credentials needed to reconnect. TippyTV keeps these profiles and saved lineups encrypted on the TV. Settings and playlist favorites stay on the TV. A Jellyfin server stores Jellyfin favorites in your account. The programme guide stays in memory while the app runs.</item>
+    >Your TV stores your profile details, including server addresses, playlists and guide URLs, and the tokens or credentials needed to reconnect. TippyTV keeps these profiles and saved lineups encrypted on the TV. Settings and playlist favorites stay on the TV. A Jellyfin server stores Jellyfin favorites in your account. The program guide stays in memory while the app runs.</item>
         <item
     >TippyTV contacts the servers and files you choose to sign in, load channels and listings, and play video. These services receive the information needed to complete each request, which can include login credentials, account and device identifiers, and your network address. Use HTTPS addresses where your sources support them. Requests to an HTTP source can be read by others with access to that network connection.</item>
         <item
