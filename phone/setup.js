@@ -4,6 +4,7 @@ const token = location.hash.slice(1);
 history.replaceState(null, "", location.pathname);
 const form = byId("setup");
 const method = byId("method");
+const sourceFields = ["name", "address", "user", "password", "guide"].map(byId);
 function configure() {
   const playlist = method.value === "playlist",
     xtream = method.value === "xtream";
@@ -35,8 +36,8 @@ async function send(cancel) {
   pending = true;
   const data = { method: cancel ? "cancel" : method.value };
   if (!cancel)
-    for (const id of ["name", "address", "user", "password", "guide"]) {
-      if (!byId(id).disabled) data[id] = byId(id).value;
+    for (const field of sourceFields) {
+      if (!field.disabled) data[field.id] = field.value;
     }
   try {
     const response = await fetch("/finish", {
@@ -70,8 +71,7 @@ method.onchange = () => {
   const selected = method.value;
   const jellyfin = (value) => value === "quick" || value === "jellyfin";
   if (!(jellyfin(source) && jellyfin(selected))) {
-    for (const id of ["name", "address", "user", "password", "guide"])
-      byId(id).value = "";
+    for (const field of sourceFields) field.value = "";
   }
   source = selected;
   configure();
