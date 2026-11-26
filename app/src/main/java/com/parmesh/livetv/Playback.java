@@ -18,6 +18,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 final class Playback {
     private static final long STATUS_POLL_MS = 500;
     private static final long MAX_RETRY_MS = 30_000;
+    private static final long STABLE_PLAYBACK_MS = 15_000;
     private static final long[] RETRY_DELAYS_MS = {2_500, 5_000, 10_000, 15_000, MAX_RETRY_MS};
 
     enum Status {
@@ -417,11 +418,14 @@ final class Playback {
                                         : !started
                                                 ? Status.WAITING_VIDEO
                                                 : compatible ? Status.LIVE_COMPATIBLE : Status.LIVE;
-                        if (next.live()) slot.reconnectDelay = 0;
                         if (slot.status != next) {
                             slot.status = next;
                             slot.statusSince = now;
                             changed.run();
+                        } else if (next.live()
+                                && slot.reconnectDelay > 0
+                                && now - slot.statusSince >= STABLE_PLAYBACK_MS) {
+                            slot.reconnectDelay = 0;
                         }
                         ui.postDelayed(this, STATUS_POLL_MS);
                     }
