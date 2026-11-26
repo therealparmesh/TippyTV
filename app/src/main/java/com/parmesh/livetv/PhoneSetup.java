@@ -1,9 +1,9 @@
 package com.parmesh.livetv;
 
-import android.content.Context;
 import android.graphics.Bitmap;
 import android.net.ConnectivityManager;
 import android.net.LinkProperties;
+import android.view.View;
 import android.widget.Button;
 import android.widget.ImageView;
 import android.widget.TextView;
@@ -40,7 +40,7 @@ final class PhoneSetup {
         screen.add(status, 8);
         ImageView qr = new ImageView(activity);
         qr.setKeepScreenOn(true);
-        qr.setVisibility(android.view.View.GONE);
+        qr.setVisibility(View.GONE);
         qr.setContentDescription(activity.getString(R.string.phone_scan));
         screen.add(qr, 8);
         Button start = activity.button(R.string.phone_start, null);
@@ -55,9 +55,10 @@ final class PhoneSetup {
                                     start.setEnabled(true);
                                     return;
                                 }
-                                start.setVisibility(android.view.View.GONE);
+                                start.setVisibility(View.GONE);
                                 status.setText(R.string.phone_preparing);
-                                new Thread(() -> serve(screen, status, qr), "phone-setup").start();
+                                new Thread(() -> serve(screen, status, qr, start), "phone-setup")
+                                        .start();
                             });
                 });
         screen.add(start, 12);
@@ -72,6 +73,11 @@ final class PhoneSetup {
     synchronized void close() {
         TvDialog previous = dialog;
         dialog = null;
+        stopSharing();
+        if (previous != null) previous.dismiss();
+    }
+
+    private void stopSharing() {
         if (networkWatch != null) {
             activity.getSystemService(ConnectivityManager.class)
                     .unregisterNetworkCallback(networkWatch);
@@ -81,14 +87,12 @@ final class PhoneSetup {
             process.destroy();
             process = null;
         }
-        if (previous != null) previous.dismiss();
     }
 
-    private void serve(TvDialog screen, TextView status, ImageView qr) {
+    private void serve(TvDialog screen, TextView status, ImageView qr, Button start) {
         Process child = null;
         try {
-            ConnectivityManager cm =
-                    (ConnectivityManager) activity.getSystemService(Context.CONNECTIVITY_SERVICE);
+            ConnectivityManager cm = activity.getSystemService(ConnectivityManager.class);
             var network = cm.getActiveNetwork();
             LinkProperties link = cm.getLinkProperties(network);
             if (link == null || link.getDnsServers().isEmpty()) throw new java.io.IOException();
@@ -108,7 +112,10 @@ final class PhoneSetup {
                                 if (lost.equals(network))
                                     activity.runOnUiThread(
                                             () -> {
-                                                if (dialog == screen) close();
+                                                synchronized (PhoneSetup.this) {
+                                                    if (dialog == screen && networkWatch == this)
+                                                        close();
+                                                }
                                             });
                             }
 
@@ -151,7 +158,7 @@ final class PhoneSetup {
                             status.setText(R.string.phone_scan);
                             qr.getLayoutParams().height = activity.dp(186);
                             qr.setImageBitmap(image);
-                            qr.setVisibility(android.view.View.VISIBLE);
+                            qr.setVisibility(View.VISIBLE);
                         });
                 JSONObject form = new JSONObject(out.readLine());
                 activity.runOnUiThread(
@@ -164,10 +171,16 @@ final class PhoneSetup {
         } catch (Exception failure) {
             activity.runOnUiThread(
                     () -> {
-                        if (dialog == screen) {
-                            status.setText(R.string.phone_unavailable);
-                            qr.setVisibility(android.view.View.GONE);
+                        synchronized (this) {
+                            if (dialog != screen) return;
+                            stopSharing();
                         }
+                        status.setText(R.string.phone_unavailable);
+                        qr.setVisibility(View.GONE);
+                        start.setText(R.string.retry);
+                        start.setEnabled(true);
+                        start.setVisibility(View.VISIBLE);
+                        start.requestFocus();
                     });
         } finally {
             if (child != null) child.destroy();

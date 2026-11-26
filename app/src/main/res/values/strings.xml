@@ -165,5 +165,5 @@
     <string name="phone_preparing">Preparing a secure connection… The first setup can take a few minutes.</string>
     <string name="phone_scan">On the same Wi-Fi, scan this code with your phone. It expires in 15 minutes.</string>
     <string name="phone_expired">Phone setup expired. Open it again for a new code.</string>
-    <string name="phone_unavailable">Phone setup couldn’t start. Check your internet connection and local network, or use the remote to continue.</string>
+    <string name="phone_unavailable">Phone setup is unavailable. Check your internet connection and local network, then try again or use the remote.</string>
 </resources>
