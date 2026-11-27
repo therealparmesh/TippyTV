@@ -1,5 +1,5 @@
 #EXTM3U
-#EXTINF:-1 tvg-id="violet" tvg-chno="1",Violet Studio
+#EXTINF:-1 tvg-id="violet" tvg-chno="1" group-title="Studio",Violet Studio
 violet.m3u8
-#EXTINF:-1 tvg-id="meadow" tvg-chno="2",Meadow Studio
+#EXTINF:-1 tvg-id="meadow" tvg-chno="2" group-title="Nature",Meadow Studio
 meadow.m3u8
