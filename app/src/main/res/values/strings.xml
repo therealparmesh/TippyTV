@@ -50,7 +50,7 @@
   >Could not save this profile on the TV. Try again.</string>
     <string name="skip_backward">Skip back 50 channels</string>
     <string name="skip_forward">Skip forward 50 channels</string>
-    <string name="channel_actions_hint">← Skip 50 · Hold Select</string>
+    <string name="channel_actions_hint">Hold Select</string>
     <string name="muted_inset">Muted inset</string>
     <string name="search_hint">Channel name or number</string>
     <string name="find_channel">Find a channel</string>
@@ -81,7 +81,9 @@
     <string name="no_listings">No listings for this time.</string>
     <string name="now">NOW</string>
     <string name="favorites">Favorites</string>
-    <string name="jump">Jump</string>
+    <string name="categories">Categories</string>
+    <string name="category_count">%1$s · %2$s</string>
+    <string name="jump">A–Z</string>
     <string name="server">Profile</string>
     <string name="all_channels">All channels</string>
     <string name="search_active">Edit search</string>

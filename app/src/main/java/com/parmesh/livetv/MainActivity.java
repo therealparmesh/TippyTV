@@ -22,11 +22,13 @@ import android.view.KeyEvent;
 import android.view.View;
 import android.view.ViewGroup;
 import android.view.inputmethod.EditorInfo;
+import android.widget.ArrayAdapter;
 import android.widget.Button;
 import android.widget.EditText;
 import android.widget.FrameLayout;
 import android.widget.HorizontalScrollView;
 import android.widget.LinearLayout;
+import android.widget.ListView;
 import android.widget.TextView;
 import android.widget.Toast;
 
@@ -91,7 +93,10 @@ public final class MainActivity extends ComponentActivity {
     private Channels.Channel selected;
     private Channels.Channel resumeMain, resumeInset;
     private boolean resumeMainPaused, resumeInsetPaused;
-    private String query = "";
+    private String query = "", category = "";
+    private Channels.Channel beforeFavorites;
+    private Map<String, Integer> categories = Map.of();
+    private List<Channels.Channel> indexedLineup;
     private String loadProblem;
     private boolean favoritesOnly,
             catalogBusy,
@@ -123,7 +128,7 @@ public final class MainActivity extends ComponentActivity {
             watchTitle,
             watchStatus,
             previewLabel;
-    private Button filterButton, queryButton, jumpButton, guideButton;
+    private Button filterButton, queryButton, categoryButton, guideButton;
     private Button watchSwap, watchClose, watchRetry, watchPause;
     private Button returnToChannels, emptyAction;
     private Consumer<Boolean> pendingNetworkAction;
@@ -492,13 +497,16 @@ public final class MainActivity extends ComponentActivity {
                         R.string.favorites,
                         () -> {
                             query = "";
+                            if (favoritesOnly) category = "";
+                            beforeFavorites = favoritesOnly ? null : selected;
                             favoritesOnly = !favoritesOnly;
                             renderFilter(true);
                         });
         addButton(header, filterButton);
-        jumpButton = button(R.string.jump, this::jumpDialog);
+        categoryButton = button(R.string.categories, this::categoryDialog);
+        categoryButton.setVisibility(View.GONE);
         guideButton = button(R.string.guide, () -> scheduleDialog(selected));
-        addButton(header, jumpButton);
+        addButton(header, categoryButton);
         addButton(header, guideButton);
         addButton(header, button(R.string.server, this::serverDialog));
         shell.addView(scrollBar(header), new LinearLayout.LayoutParams(-1, dp(50)));
@@ -575,10 +583,7 @@ public final class MainActivity extends ComponentActivity {
                         () -> {
                             if (fullLineup.isEmpty() && loadProblem != null) loadCatalog();
                             else if (!query.isBlank()) applySearch("");
-                            else {
-                                favoritesOnly = false;
-                                renderFilter(true);
-                            }
+                            else chooseCategory("");
                         });
         emptyAction.setId(View.generateViewId());
         LinearLayout.LayoutParams recovery = new LinearLayout.LayoutParams(-2, dp(44));
@@ -593,7 +598,9 @@ public final class MainActivity extends ComponentActivity {
         Button next = button("+50", () -> page(50));
         next.setContentDescription(getString(R.string.skip_forward));
         addButton(pager, next);
-        for (Button pageButton : List.of(previous, next)) {
+        Button jumpButton = button(R.string.jump, this::jumpDialog);
+        addButton(pager, jumpButton);
+        for (Button pageButton : List.of(previous, next, jumpButton)) {
             pageButton.setOnKeyListener((view, key, event) -> {
                 if (event.getAction() != KeyEvent.ACTION_DOWN || key != KeyEvent.KEYCODE_DPAD_UP)
                     return false;
@@ -922,14 +929,25 @@ public final class MainActivity extends ComponentActivity {
         Set<String> stars = favorites;
         boolean starred = favoritesOnly;
         String term = query;
+        Map<String, Integer> known = indexedLineup == channels ? categories : null;
+        String requestedCategory = category;
         queryButton.setText(term.isBlank() ? R.string.search : R.string.search_active);
         filterButton.setText(starred ? R.string.all_channels : R.string.favorites);
         search.execute(() -> {
             if (generation != visibleGeneration) return;
-            List<Channels.Channel> filtered = Channels.filter(channels, stars, starred, term);
+            Map<String, Integer> options =
+                    known == null ? Channels.categoryCounts(channels) : known;
+            String active = options.containsKey(requestedCategory) ? requestedCategory : "";
+            List<Channels.Channel> filtered =
+                    Channels.filter(channels, stars, starred, starred ? "" : active, term);
             Map<String, Integer> index = Channels.jumpTargets(filtered);
             ui.post(() -> {
                 if (destroyed || api == null || generation != visibleGeneration) return;
+                indexedLineup = channels;
+                categories = options;
+                category = active;
+                if (options.isEmpty() && categoryButton.hasFocus()) queryButton.requestFocus();
+                categoryButton.setVisibility(options.isEmpty() ? View.GONE : View.VISIBLE);
                 View focus = list.getFocusedChild();
                 int focusPosition =
                         focus == null
@@ -972,7 +990,7 @@ public final class MainActivity extends ComponentActivity {
         boolean hasLineup = !fullLineup.isEmpty();
         boolean canClear = !query.isBlank() || favoritesOnly;
         boolean canRetry = !hasLineup && loadProblem != null;
-        if (jumpButton.hasFocus() && n == 0) queryButton.requestFocusFromTouch();
+        if (n == 0 && pager.hasFocus()) queryButton.requestFocusFromTouch();
         String label =
                 getResources()
                         .getQuantityString(
@@ -983,9 +1001,10 @@ public final class MainActivity extends ComponentActivity {
         else if (catalogBusy) label = getString(R.string.refreshing_channel_count, label);
         else if (loadProblem != null && hasLineup)
             label = getString(R.string.partial_channel_count, label);
-        else if (!query.isBlank()) label = getString(R.string.search_channel_count, label, query);
+        if (!query.isBlank()) label = getString(R.string.search_channel_count, label, query);
+        if (!favoritesOnly && !category.isEmpty())
+            label = getString(R.string.category_count, category, label);
         count.setText(label);
-        jumpButton.setEnabled(n > 0);
         emptyState.setVisibility(n == 0 ? View.VISIBLE : View.GONE);
         pager.setVisibility(n == 0 ? View.GONE : View.VISIBLE);
         boolean canRecover = n == 0 && (hasLineup || !catalogBusy) && (canRetry || canClear);
@@ -996,6 +1015,7 @@ public final class MainActivity extends ComponentActivity {
                         ? R.string.retry
                         : !query.isBlank() ? R.string.clear_search : R.string.all_channels);
         queryButton.setNextFocusDownId(canRecover ? emptyAction.getId() : list.getId());
+        categoryButton.setNextFocusDownId(canRecover ? emptyAction.getId() : list.getId());
         filterButton.setNextFocusDownId(canRecover ? emptyAction.getId() : list.getId());
         empty.setText(
                 canRetry
@@ -1046,6 +1066,38 @@ public final class MainActivity extends ComponentActivity {
     private void applySearch(String value) {
         query = value.trim();
         renderFilter(true);
+    }
+
+    private void chooseCategory(String value) {
+        category = value;
+        query = "";
+        favoritesOnly = false;
+        beforeFavorites = null;
+        renderFilter(true);
+    }
+
+    private void categoryDialog() {
+        List<String> names = new ArrayList<>(categories.keySet());
+        List<String> labels = new ArrayList<>();
+        labels.add(getString(R.string.all_channels));
+        for (String name : names)
+            labels.add(
+                    getString(R.string.category_count, name, String.valueOf(categories.get(name))));
+        TvDialog dialog = new TvDialog(this, getString(R.string.categories));
+        ListView choices = new ListView(this);
+        choices.setAdapter(
+                new ArrayAdapter<>(this, android.R.layout.simple_list_item_single_choice, labels));
+        choices.setChoiceMode(ListView.CHOICE_MODE_SINGLE);
+        int current = favoritesOnly ? 0 : names.indexOf(category) + 1;
+        choices.setItemChecked(current, true);
+        choices.setSelection(current);
+        choices.setOnItemClickListener((parent, view, position, id) -> {
+            dialog.onDismiss(() -> chooseCategory(position == 0 ? "" : names.get(position - 1)));
+            dialog.dismiss();
+        });
+        dialog.add(choices, 12);
+        choices.getLayoutParams().height = dp(Math.min(240, labels.size() * 52));
+        dialog.show(choices);
     }
 
     private void jumpDialog() {
@@ -1866,6 +1918,10 @@ public final class MainActivity extends ComponentActivity {
         pendingJump = null;
         focusedPosition = 0;
         resetSelection = false;
+        category = "";
+        categories = Map.of();
+        indexedLineup = null;
+        beforeFavorites = null;
         query = "";
         favoritesOnly = false;
         fullscreen = false;
@@ -1897,6 +1953,12 @@ public final class MainActivity extends ComponentActivity {
             scheduleGuide();
         }
         ui.postDelayed(minute, 30_000);
+    }
+
+    @Override
+    protected void onResume() {
+        super.onResume();
+        if (loadProblem != null) loadCatalog();
     }
 
     @Override
@@ -2051,7 +2113,14 @@ public final class MainActivity extends ComponentActivity {
         }
         if (favoritesOnly) {
             favoritesOnly = false;
-            renderFilter(true);
+            selected = beforeFavorites;
+            beforeFavorites = null;
+            pendingJump = selected == null ? null : selected.id();
+            renderFilter(selected == null);
+            return;
+        }
+        if (!category.isEmpty()) {
+            chooseCategory("");
             return;
         }
         if (player != null && player.primary() != null) {

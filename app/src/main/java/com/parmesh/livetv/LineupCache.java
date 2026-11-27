@@ -51,23 +51,39 @@ final class LineupCache {
                     new DataInputStream(
                             new BufferedInputStream(
                                     new GZIPInputStream(new ByteArrayInputStream(compressed))))) {
-                int size = data.readInt();
+                int header = data.readInt();
+                // Older snapshots start with a nonnegative channel count and have no categories.
+                int size = header < 0 ? ~header : header;
                 List<Channels.Channel> channels = new ArrayList<>();
                 Map<String, PlaylistSource.Entry> entries = new LinkedHashMap<>();
                 for (int i = 0; i < size; i++) {
                     String id = data.readUTF(), name = data.readUTF(), number = data.readUTF();
                     boolean adult = data.readBoolean();
+                    List<String> groups = List.of();
+                    if (header < 0) {
+                        int count = data.readUnsignedShort();
+                        if (count > 0) {
+                            groups = new ArrayList<>();
+                            for (int g = 0; g < count; g++) groups.add(data.readUTF());
+                        }
+                    }
                     if (source instanceof PlaylistSource) {
                         entries.put(
                                 id,
                                 new PlaylistSource.Entry(
-                                        name, number, data.readUTF(), data.readUTF(), adult));
+                                        name,
+                                        number,
+                                        data.readUTF(),
+                                        data.readUTF(),
+                                        adult,
+                                        groups));
                     } else {
                         channels.add(
-                                new Channels.Channel(id, name, number, data.readBoolean(), adult));
+                                new Channels.Channel(
+                                        id, name, number, data.readBoolean(), adult, groups));
                     }
                 }
-                if (size < 0 || data.read() != -1) throw new IOException("Invalid lineup snapshot");
+                if (data.read() != -1) throw new IOException("Invalid lineup snapshot");
                 savedDigest = digest(compressed);
                 return source instanceof PlaylistSource playlist
                         ? playlist.channelList(entries)
@@ -93,7 +109,7 @@ final class LineupCache {
             try (DataOutputStream data =
                     new DataOutputStream(
                             new BufferedOutputStream(new GZIPOutputStream(compressed)))) {
-                data.writeInt(channels.size());
+                data.writeInt(~channels.size());
                 for (Channels.Channel c : channels) {
                     if (compressed.size() > MAX_BYTES) {
                         clear();
@@ -103,6 +119,10 @@ final class LineupCache {
                     data.writeUTF(c.name());
                     data.writeUTF(c.number());
                     data.writeBoolean(c.adult());
+                    if (c.categories().size() > 65535)
+                        throw new IOException("Too many channel categories");
+                    data.writeShort(c.categories().size());
+                    for (String group : c.categories()) data.writeUTF(group);
                     if (source instanceof PlaylistSource playlist) {
                         PlaylistSource.Entry e = playlist.entry(c.id());
                         data.writeUTF(e.guide());

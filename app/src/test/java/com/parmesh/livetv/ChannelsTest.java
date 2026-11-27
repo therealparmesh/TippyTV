@@ -11,29 +11,36 @@ import java.util.Set;
 public class ChannelsTest {
     @Test
     public void searchSupportsAccentsNumbersAndFavorites() {
-        var featured = new Channels.Channel("news", "Télé Québec", "73.2", false, false);
-        var numbered = new Channels.Channel("id40", "Channel 40", "40", false, false);
+        var featured = new Channels.Channel("news", "Télé Québec", "73.2", false, false, List.of());
+        var numbered = new Channels.Channel("id40", "Channel 40", "40", false, false, List.of());
         var all = List.of(numbered, featured);
-        assertEquals(List.of(featured), Channels.filter(all, Set.of("news"), true, "quebec tele"));
-        assertEquals(featured, Channels.filter(all, Set.of(), false, "73.2").get(0));
-        assertEquals("id40", Channels.filter(all, Set.of(), false, "40").get(0).id());
-        assertSame(all, Channels.filter(all, Set.of(), false, " "));
-        assertTrue(Channels.filter(all, Set.of(), true, "quebec").isEmpty());
+        assertEquals(
+                List.of(featured), Channels.filter(all, Set.of("news"), true, "", "quebec tele"));
+        assertEquals(featured, Channels.filter(all, Set.of(), false, "", "73.2").get(0));
+        assertEquals("id40", Channels.filter(all, Set.of(), false, "", "40").get(0).id());
+        assertSame(all, Channels.filter(all, Set.of(), false, "", " "));
+        assertTrue(Channels.filter(all, Set.of(), true, "", "quebec").isEmpty());
     }
 
     @Test
     public void jumpsUseFilteredIndicesAndClampAtBoundaries() {
         var channels =
                 List.of(
-                        new Channels.Channel("1", "Élan", "", false, false),
-                        new Channels.Channel("2", "  Beta News", "", false, false),
-                        new Channels.Channel("3", "# Seven", "", false, false),
-                        new Channels.Channel("4", "Beta Weather", "", false, false));
+                        new Channels.Channel("1", "Élan", "", false, false, List.of()),
+                        new Channels.Channel("2", "  Beta News", "", false, false, List.of("News")),
+                        new Channels.Channel("3", "# Seven", "", false, false, List.of()),
+                        new Channels.Channel(
+                                "4",
+                                "Beta Weather",
+                                "",
+                                false,
+                                false,
+                                List.of("Local", "Weather")));
         assertEquals(
                 List.of("#", "B", "E"), new ArrayList<>(Channels.jumpTargets(channels).keySet()));
         assertEquals(Integer.valueOf(0), Channels.jumpTargets(channels).get("E"));
         assertEquals(Integer.valueOf(1), Channels.jumpTargets(channels).get("B"));
-        var filtered = Channels.filter(channels, Set.of(), false, "weather beta");
+        var filtered = Channels.filter(channels, Set.of(), false, "Local", "beta");
         assertEquals(Integer.valueOf(0), Channels.jumpTargets(filtered).get("B"));
         assertEquals(0, Channels.indexOf(filtered, "4"));
         assertEquals(-1, Channels.indexOf(filtered, "2"));

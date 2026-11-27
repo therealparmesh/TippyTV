@@ -269,6 +269,14 @@ final class Jellyfin implements TvSource {
                 throw new IOException("Jellyfin returned a channel without an ID.");
             JSONObject userData = item.optJSONObject("UserData");
             String name = str(item, "Name");
+            List<String> groups = new ArrayList<>();
+            JSONArray genres = item.optJSONArray("Genres");
+            if (genres != null)
+                for (int g = 0; g < genres.length(); g++) {
+                    if (genres.opt(g) instanceof String genre
+                            && !genre.isBlank()
+                            && !groups.contains(genre.trim())) groups.add(genre.trim());
+                }
             channels.add(
                     new Channels.Channel(
                             str(item, "Id"),
@@ -278,7 +286,8 @@ final class Jellyfin implements TvSource {
                                     : str(item, "ChannelNumber"),
                             userData != null && userData.optBoolean("IsFavorite"),
                             adultGroup(item.optJSONArray("Genres"))
-                                    || adultGroup(item.optJSONArray("Tags"))));
+                                    || adultGroup(item.optJSONArray("Tags")),
+                            groups));
         }
         int next = start + items.length();
         int total = result.optInt("TotalRecordCount", -1);

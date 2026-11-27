@@ -1,8 +1,12 @@
-from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
-from urllib.parse import urlsplit, parse_qs
+import json
+import os
+import secrets
+import threading
+import time
 from datetime import datetime, timezone
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-import json, time, threading, os, secrets
+from urllib.parse import parse_qs, urlsplit
 
 ROOT = Path(os.environ.get("JELLYFIN_QA_MEDIA", "/tmp/jellyfin-live-fixture"))
 PORT = int(os.environ.get("JELLYFIN_QA_PORT", "18798"))
@@ -42,8 +46,8 @@ quick_connect = {}
 lock = threading.Lock()
 channel_changes = threading.Condition(lock)
 channels = [
-    {"Id": "a", "Name": "Amber One", "ChannelNumber": "1"},
-    {"Id": "b", "Name": "Blue Two", "ChannelNumber": "2"},
+    {"Id": "a", "Name": "Amber One", "ChannelNumber": "1", "Genres": ["News", "Local"]},
+    {"Id": "b", "Name": "Blue Two", "ChannelNumber": "2", "Genres": ["News"]},
 ]
 channels += [
     {"Id": f"c{i}", "Name": f"Channel {i:04d}", "ChannelNumber": str(i)}
@@ -103,6 +107,23 @@ class Handler(BaseHTTPRequestHandler):
             with lock:
                 attempt = quick_connect.get(q.get("secret", [""])[0])
             return self.result(200, attempt) if attempt else self.result(404)
+        if path == "/player_api.php":
+            if q.get("action") == ["get_live_streams"]:
+                return self.result(
+                    200, [{"stream_id": 1, "name": "Fixture TV", "category_id": 1}]
+                )
+            if q.get("action") == ["get_live_categories"]:
+                with lock:
+                    fault = state["channel_failure"]
+                if fault == "outage":
+                    return self.result(503)
+                groups = (
+                    []
+                    if fault == "changed"
+                    else [{"category_id": 1, "category_name": "Local"}]
+                )
+                return self.result(200, groups)
+            return self.result(404)
         if path == "/qa/channels.m3u":
             with channel_changes:
                 state["playlist_requests"] += 1

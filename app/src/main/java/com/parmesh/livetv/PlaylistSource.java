@@ -40,7 +40,13 @@ final class PlaylistSource implements TvSource {
     private final Jellyfin.Session profile;
     private final SharedPreferences stars;
 
-    record Entry(String name, String number, String guide, String url, boolean adult) {}
+    record Entry(
+            String name,
+            String number,
+            String guide,
+            String url,
+            boolean adult,
+            List<String> categories) {}
 
     private volatile Map<String, Entry> entries = Map.of();
     private final Object lineupLock = new Object();
@@ -98,13 +104,21 @@ final class PlaylistSource implements TvSource {
     }
 
     static Map<String, Entry> download(Jellyfin.Session profile) throws IOException {
+        return download(profile, false);
+    }
+
+    private static Map<String, Entry> download(Jellyfin.Session profile, boolean hadCategories)
+            throws IOException {
         HttpUrl playlist = HttpUrl.get(profile.playlist());
         if (profile.xtream()) {
             try {
                 return xtreamChannels(
                         playlist,
                         playlist.queryParameter("username"),
-                        playlist.queryParameter("password"));
+                        playlist.queryParameter("password"),
+                        hadCategories);
+            } catch (CategoryFailure incomplete) {
+                throw incomplete;
             } catch (IOException unavailable) {
                 // Some providers expose only the M3U export.
             }
@@ -114,7 +128,8 @@ final class PlaylistSource implements TvSource {
         }
     }
 
-    private static Map<String, Entry> xtreamChannels(HttpUrl playlist, String user, String password)
+    private static Map<String, Entry> xtreamChannels(
+            HttpUrl playlist, String user, String password, boolean hadCategories)
             throws IOException {
         HttpUrl endpoint =
                 playlist.resolve("player_api.php")
@@ -129,11 +144,11 @@ final class PlaylistSource implements TvSource {
                         .addPathSegment(user)
                         .addPathSegment(password)
                         .build();
-        Set<String> adultCategories = adultCategories(endpoint);
         List<Entry> channels = new ArrayList<>();
         try (Response response = fetch(endpoint);
                 JsonReader json = new JsonReader(response.body().charStream())) {
             json.beginArray();
+            Map<String, String> categories = liveCategories(endpoint, hadCategories);
             while (json.hasNext()) {
                 String id = "", name = "", number = "", epg = "", category = "";
                 boolean adult = false;
@@ -163,6 +178,7 @@ final class PlaylistSource implements TvSource {
                     }
                 }
                 json.endObject();
+                String group = categories.getOrDefault(category, "");
                 if (!id.isBlank() && !name.isBlank())
                     channels.add(
                             new Entry(
@@ -174,7 +190,8 @@ final class PlaylistSource implements TvSource {
                                             .addPathSegment(id + ".ts")
                                             .build()
                                             .toString(),
-                                    adult || adultCategories.contains(category)));
+                                    adult || Channels.adultGroup(group),
+                                    group.isEmpty() ? List.of() : List.of(group)));
             }
             json.endArray();
         } catch (IllegalStateException malformed) {
@@ -184,25 +201,36 @@ final class PlaylistSource implements TvSource {
         return indexChannels(channels);
     }
 
-    private static Set<String> adultCategories(HttpUrl endpoint) {
+    private static final class CategoryFailure extends IOException {
+        CategoryFailure(Exception cause) {
+            super("Could not refresh Xtream categories.", cause);
+        }
+    }
+
+    private static Map<String, String> liveCategories(HttpUrl endpoint, boolean hadCategories)
+            throws CategoryFailure {
         HttpUrl url =
                 endpoint.newBuilder().setQueryParameter("action", "get_live_categories").build();
         try {
             JSONArray categories = new JSONArray(text(url, 2_000_000));
-            Set<String> ids = new HashSet<>();
+            Map<String, String> ids = new HashMap<>();
             for (int i = 0; i < categories.length(); i++) {
                 JSONObject category = categories.optJSONObject(i);
-                if (category == null || !Channels.adultGroup(category.optString("category_name")))
-                    continue;
-                if (!category.isNull("category_id")) {
-                    String id = category.optString("category_id");
-                    if (!id.isBlank()) ids.add(id);
-                }
+                if (category == null
+                        || category.isNull("category_name")
+                        || category.isNull("category_id")) continue;
+                String id = category.optString("category_id");
+                String name = category.optString("category_name").trim();
+                if (!id.isBlank() && !name.isEmpty()) ids.put(id, name);
             }
+            if (ids.isEmpty() && categories.length() != 0)
+                throw new JSONException("Invalid Xtream categories");
             return ids;
         } catch (IOException | JSONException unavailable) {
-            // Category metadata is optional; stream flags still apply.
-            return Set.of();
+            // Some providers never supply categories. Preserve a previously categorized lineup on
+            // failure.
+            if (hadCategories) throw new CategoryFailure(unavailable);
+            return Map.of();
         }
     }
 
@@ -213,11 +241,11 @@ final class PlaylistSource implements TvSource {
             throw new IOException("Playlist contains markup instead of a stream URL.");
         boolean extended = data.startsWith("#EXTM3U");
         if (extended && HLS.matcher(data).find())
-            return Map.of("stream", new Entry(profileName, "", "", base.toString(), false));
+            return Map.of(
+                    "stream", new Entry(profileName, "", "", base.toString(), false, List.of()));
         String name = "", number = "", guide = "";
         List<Entry> channels = new ArrayList<>();
-        boolean adult = false;
-        boolean groupAdult = false;
+        String group = "", entryGroup = "";
         BufferedReader reader = new BufferedReader(new StringReader(data));
         for (String line; (line = reader.readLine()) != null; ) {
             line = line.trim();
@@ -232,18 +260,18 @@ final class PlaylistSource implements TvSource {
                 Matcher attrs = ATTR.matcher(line).region(0, comma);
                 guide = "";
                 number = "";
-                adult = false;
+                entryGroup = "";
                 while (attrs.find()) {
                     if (attrs.group(1).equalsIgnoreCase("group-title")) {
-                        groupAdult = false;
-                        adult = Channels.adultGroup(attrs.group(2));
+                        group = "";
+                        entryGroup = attrs.group(2).trim();
                     }
                     if (attrs.group(1).equals("tvg-id")) guide = attrs.group(2);
                     if (attrs.group(1).equals("tvg-chno")) number = attrs.group(2);
                 }
                 name = comma == line.length() ? "" : line.substring(comma + 1).trim();
             } else if (line.regionMatches(true, 0, "#EXTGRP:", 0, 8)) {
-                groupAdult = Channels.adultGroup(line.substring(8));
+                group = line.substring(8).trim();
             } else if (!line.isEmpty() && !line.startsWith("#")) {
                 HttpUrl url = HttpUrl.parse(line);
                 if (url == null
@@ -254,11 +282,28 @@ final class PlaylistSource implements TvSource {
                     url = base.resolve(line);
                 if (url != null) {
                     String label = name.isEmpty() ? url.host() : name;
+                    String labelGroup = entryGroup.isEmpty() ? group : entryGroup;
+                    List<String> groups =
+                            labelGroup.isEmpty()
+                                    ? List.of()
+                                    : labelGroup.indexOf(';') < 0
+                                            ? List.of(labelGroup)
+                                            : Arrays.stream(labelGroup.split(";"))
+                                                    .map(String::trim)
+                                                    .filter(g -> !g.isEmpty())
+                                                    .distinct()
+                                                    .collect(java.util.stream.Collectors.toList());
                     Entry entry =
-                            new Entry(label, number, guide, url.toString(), adult || groupAdult);
+                            new Entry(
+                                    label,
+                                    number,
+                                    guide,
+                                    url.toString(),
+                                    Channels.adultGroup(entryGroup) || Channels.adultGroup(group),
+                                    groups);
                     channels.add(entry);
                 }
-                adult = false;
+                entryGroup = "";
                 name = "";
                 number = "";
                 guide = "";
@@ -303,7 +348,12 @@ final class PlaylistSource implements TvSource {
             if (recovering && SystemClock.elapsedRealtime() < nextRecoveryRefresh)
                 return lastDownload;
             try {
-                lastDownload = download(profile);
+                lastDownload =
+                        download(
+                                profile,
+                                profile.xtream()
+                                        && entries.values().stream()
+                                                .anyMatch(e -> !e.categories().isEmpty()));
                 return lastDownload;
             } finally {
                 nextRecoveryRefresh = SystemClock.elapsedRealtime() + RECOVERY_REFRESH_MS;
@@ -327,7 +377,8 @@ final class PlaylistSource implements TvSource {
                             entry.name(),
                             entry.number(),
                             entry.name().equals(favorites.get(id)),
-                            entry.adult()));
+                            entry.adult(),
+                            entry.categories()));
         });
         entries = loaded;
         if (!ids.equals(guideIds)) guideIds = ids;

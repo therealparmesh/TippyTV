@@ -32,10 +32,17 @@ final class Channels {
             String number,
             boolean favorite,
             boolean adult,
+            List<String> categories,
             String searchKey,
             int jumpBucket) {
-        Channel(String id, String name, String number, boolean favorite, boolean adult) {
-            this(id, name, number, favorite, adult, normalize(name));
+        Channel(
+                String id,
+                String name,
+                String number,
+                boolean favorite,
+                boolean adult,
+                List<String> categories) {
+            this(id, name, number, favorite, adult, categories, normalize(name));
         }
 
         private Channel(
@@ -44,6 +51,7 @@ final class Channels {
                 String number,
                 boolean favorite,
                 boolean adult,
+                List<String> categories,
                 String normalizedName) {
             this(
                     id,
@@ -51,6 +59,7 @@ final class Channels {
                     number,
                     favorite,
                     adult,
+                    List.copyOf(categories),
                     (normalizedName + " " + normalize(number)).trim(),
                     bucket(normalizedName));
         }
@@ -74,15 +83,20 @@ final class Channels {
     }
 
     static List<Channel> filter(
-            List<Channel> source, Set<String> favorites, boolean favoriteOnly, String query) {
+            List<Channel> source,
+            Set<String> favorites,
+            boolean favoriteOnly,
+            String category,
+            String query) {
         String normalized = normalize(query);
         String[] words = normalized.isEmpty() ? new String[0] : SPACES.split(normalized);
-        if (!favoriteOnly && words.length == 0) return source;
+        if (!favoriteOnly && category.isEmpty() && words.length == 0) return source;
         List<Channel> result = new ArrayList<>();
         List<Channel> exactNumbers = new ArrayList<>();
         outer:
         for (Channel c : source) {
             if (favoriteOnly && !favorites.contains(c.id)) continue;
+            if (!category.isEmpty() && !c.categories.contains(category)) continue;
             for (String word : words) if (!c.searchKey.contains(word)) continue outer;
             if (!normalized.isEmpty() && normalized.equals(c.number)) exactNumbers.add(c);
             else result.add(c);
@@ -90,6 +104,16 @@ final class Channels {
         if (exactNumbers.isEmpty()) return result;
         exactNumbers.addAll(result);
         return exactNumbers;
+    }
+
+    static Map<String, Integer> categoryCounts(List<Channel> channels) {
+        Map<String, Integer> counts =
+                new java.util.TreeMap<>(
+                        String.CASE_INSENSITIVE_ORDER.thenComparing(
+                                java.util.Comparator.naturalOrder()));
+        for (Channel channel : channels)
+            for (String group : channel.categories) counts.merge(group, 1, Integer::sum);
+        return counts;
     }
 
     static Map<String, Integer> jumpTargets(List<Channel> channels) {

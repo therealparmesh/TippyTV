@@ -6,9 +6,9 @@ Pass --release-apk to test a release APK signed with the same key after seeding.
 
 import argparse
 import json
-import subprocess
-import struct
 import re
+import struct
+import subprocess
 import time
 import urllib.request
 import xml.etree.ElementTree as ET
@@ -73,6 +73,29 @@ def tap_text(label):
     node = expect_text(label)
     left, top, right, bottom = map(int, re.findall(r"\d+", node.get("bounds")))
     adb("shell", "input", "tap", str((left + right) // 2), str((top + bottom) // 2))
+
+
+def fill_fields(fields):
+    for label, value in fields:
+        tap_text(label)
+        adb("shell", "input", "text", value)
+        if b"mInputShown=true" in adb("shell", "dumpsys", "input_method"):
+            key(4)
+
+
+def select_saved_profile(name):
+    # Saved fixtures sort before the Jellyfin account. Use the remote even if it is offscreen.
+    for _ in range(100):
+        focused_item = next(
+            (label(n) for n in nodes() if n.get("focused") == "true"), None
+        )
+        if focused_item == name:
+            key(23)
+            return
+        if focused_item == "Set up with your phone":
+            break
+        key(20)
+    raise AssertionError(f"Saved profile not found: {name}")
 
 
 def cold_start():
@@ -163,13 +186,13 @@ def check_pictures(inset_aspect):
             "Inset did not return to the bottom corner"
         )
     check_geometry(width, pixels, (left, top, right, bottom), inset_aspect)
-    region = (
+    inset_region = (
         (left + 8) / width,
         (top + 8) / height,
         (right - 8) / width,
         (bottom - 8) / height,
     )
-    for name, region in (("main", (0.1, 0.1, 0.45, 0.4)), ("inset", region)):
+    for name, region in (("main", (0.1, 0.1, 0.45, 0.4)), ("inset", inset_region)):
         left, top, right, bottom = region
         colorful = 0
         for y in range(int(height * top), int(height * bottom), 8):
@@ -271,11 +294,50 @@ focused("All channels")
 key(23)
 focused("1  Amber One")
 print("PASS: search and favorites empty-state recovery", flush=True)
+key(19)
+key(22)
+key(22)
+focused("Categories")
+key(23)
+key(20)  # Local
+key(20)  # News
+key(23)
+expect_text("News · 2 channels")
+key(20)
+focused("2  Blue Two")
+key(84)
+adb("shell", "input", "text", "Amber")
+key(4)
+key(20)
+key(23)
+focused("1  Amber One")
+expect_text("News · 1 channel · “Amber”")
+key(4)
+expect_text("News · 2 channels")
+key(19)
+focused("Search")
+key(22)
+key(23)
+focused("All channels")
+key(4)
+focused("1  Amber One")
+expect_text("News · 2 channels")
+key(4)
+expect_text("1203 channels")
 key(21)
 focused("−50")
 key(22)
 key(23)
 focused("+50")
+key(22)
+focused("A–Z")
+key(23)
+focused("First channel")
+key(20)
+key(22)
+focused("B")
+key(23)
+focused("2  Blue Two")
 key(21)
 key(23)
 focused("−50")
@@ -716,7 +778,7 @@ try:
     request("/qa/channel_failure?mode=hold", {})
     cold_start()
     expect_text("1203 channels · Refreshing…")
-    tap_text("Jump")
+    tap_text("A–Z")
     tap_text("First channel")
     focused("1  Amber One")
     request("/qa/channel_failure?mode=reordered", {})
@@ -734,15 +796,13 @@ tap_text("Profile")
 tap_text("Switch profile")
 tap_text("M3U playlist")
 base = f"http://10.0.2.2:{args.port}/qa"
-for label, value in (
-    ("Profile name", "Fixture"),
-    ("Playlist URL or Gist", base + "/channels.m3u"),
-    ("Guide URL or Gist (optional)", base + "/guide.xml"),
-):
-    tap_text(label)
-    adb("shell", "input", "text", value)
-    if b"mInputShown=true" in adb("shell", "dumpsys", "input_method"):
-        key(4)
+fill_fields(
+    (
+        ("Profile name", "Fixture"),
+        ("Playlist URL or Gist", base + "/channels.m3u"),
+        ("Guide URL or Gist (optional)", base + "/guide.xml"),
+    )
+)
 tap_text("Continue")
 expect_text("Playlist One", "Now · First program")
 
@@ -796,14 +856,13 @@ try:
     expect_text("Replacement One", "Select a channel to start watching")
     tap_text("Favorites")
     expect_text("No favorites yet. Add a channel to find it here.")
-    tap_text("All channels")
-    expect_text("Replacement One")
 
+    # Switch away from an empty Favorites view. The other profile opens its full lineup.
     request("/qa/channel_failure?mode=hold", {})
     tap_text("Profile")
     tap_text("Switch profile")
-    tap_text(f"{session['User']['Id']} · http://10.0.2.2:{args.port}")
-    expect_text("1203 channels · Refreshing…")
+    select_saved_profile(f"{session['User']['Id']} · http://10.0.2.2:{args.port}")
+    expect_text("1203 channels · Refreshing…", "Favorites", "Categories")
     tap_text("Profile")
     expect_text("Switch profile")
     request("/qa/channel_failure?mode=expired", {})
@@ -812,5 +871,42 @@ finally:
     request("/qa/channel_failure?enabled=0", {})
 print(
     "PASS: cached playlist plays during refresh; replaced channels lose stale playback and favorites",
+    flush=True,
+)
+
+tap_text("Xtream")
+fill_fields(
+    (
+        ("Profile name", "Xtream QA"),
+        ("Server URL (http:// or https://)", f"http://10.0.2.2:{args.port}"),
+        ("Username", "qa"),
+        ("Password", "fixture"),
+    )
+)
+tap_text("Continue")
+expect_text("1 channel", "Categories")
+try:
+    request("/qa/channel_failure?mode=outage", {})
+    cold_start()
+    expect_text("1 channel · Refresh needed", "Categories")
+    tap_text("Categories")
+    expect_text("Local · 1")
+    key(4)
+    key(3)
+    request("/qa/channel_failure?mode=changed", {})
+    adb(
+        "shell",
+        "am",
+        "start",
+        "--activity-reorder-to-front",
+        "-n",
+        "com.parmesh.livetv/.MainActivity",
+    )
+    expect_text("1 channel", "Fixture TV")
+    assert all(node.get("text") != "Categories" for node in nodes())
+finally:
+    request("/qa/channel_failure?enabled=0", {})
+print(
+    "PASS: Xtream retains saved groups during an outage and retries on return",
     flush=True,
 )

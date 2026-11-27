@@ -25,7 +25,7 @@ To install from GitHub on Fire TV or Android TV, follow the steps below. Use the
 | Xtream       | A profile name, the provider's base URL, username, and password. Include the port or path if your provider supplies one.                   |
 | M3U playlist | A profile name, the playlist URL, and an optional XMLTV guide URL. If you paste a GitHub Gist page URL, TippyTV lets you choose the files. |
 
-Use **Profile → Switch profile** to add or open another source.
+Use **Profile → Switch profile** to add or open another source. Switching opens the new profile’s full channel list and clears the previous search or category.
 
 ### Set up from your phone
 
@@ -35,15 +35,18 @@ The TV hosts the HTTPS form and keeps its certificate keys locally. First-time s
 
 ## Watch live TV
 
-| To…                       | Use…                                                                                                                                                                                      |
-| ------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Preview or go full screen | Press **Select** on a channel to preview it. Press it again to go full screen.                                                                                                            |
-| Show playback controls    | Press a direction or **Select** in full screen. Press **Back** to return to channels.                                                                                                     |
-| Pause or resume           | Press **Play/Pause** on the remote or use **Pause** and **Resume live** on screen.                                                                                                        |
-| Browse a long lineup      | Use **Search** for names and numbers, or **Jump** for letters and list endpoints. From a channel row, press **Left** for **−50** and **+50**, then press **Up** to focus the destination. |
-| Save a favorite           | Hold **Select** and choose **Add favorite**. Switch between **Favorites** and **All channels** to change views and clear the search.                                                      |
-| Read the guide            | Open **Guide**. **Earlier** and **Later** move three hours at a time. **Now** returns to the current window.                                                                              |
-| Watch two channels        | Hold **Select** on the second channel and choose **Play in inset**. **Swap** changes which channel has audio. **Close inset** stops the second stream.                                    |
+| To…                       | Use…                                                                                                                                                                                     |
+| ------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Preview or go full screen | Press **Select** on a channel to preview it. Press it again to go full screen.                                                                                                           |
+| Show playback controls    | Press a direction or **Select** in full screen. Press **Back** to return to channels.                                                                                                    |
+| Pause or resume           | Press **Play/Pause** on the remote or use **Pause** and **Resume live** on screen.                                                                                                       |
+| Browse by category        | Open **Categories** and choose a group. Choose **All channels** to clear the category and search.                                                                                        |
+| Browse a long lineup      | From a channel, press **Left** for **−50**, **+50**, and **A–Z**. Use **A–Z** to jump to a letter or either end of the current list. Press **Up** after paging to focus the destination. |
+| Save a favorite           | Hold **Select** and choose **Add favorite**. Switch between **Favorites** and **All channels** to change views and clear the search.                                                     |
+| Read the guide            | Open **Guide**. **Earlier** and **Later** move three hours at a time. **Now** returns to the current window.                                                                             |
+| Watch two channels        | Hold **Select** on the second channel and choose **Play in inset**. **Swap** changes which channel has audio. **Close inset** stops the second stream.                                   |
+
+The channel count shows your active category and search term. **Categories** appears when the provider supplies Xtream categories, M3U groups, or Jellyfin channel genres. Search and **A–Z** work within the current list. **Favorites** shows favorites across the profile. **Back** clears a search first, then returns from Favorites to the list you left. Press **Back** in a category to return to the full lineup.
 
 Jellyfin favorites sync to your server account. Xtream and playlist favorites stay with their profile on this TV. A provider rename or a change to a channel's identity can require adding it again.
 
@@ -51,7 +54,7 @@ With **Profile → Filter low-quality content** enabled, TippyTV hides channels 
 
 ## Troubleshooting
 
-- **The TV is refreshing channels.** You can browse and tune from the last saved lineup while TippyTV checks for changes. A failed refresh keeps that lineup available. A successful refresh removes channels that are gone. Signing out, removing the profile, or revoked Jellyfin access clears the saved lineup.
+- **The TV is refreshing channels.** You can browse and tune from the last saved lineup while TippyTV checks for changes. A failed refresh keeps that lineup available. Returning to the app retries a failed refresh, or you can choose **Profile → Refresh channels**. If an Xtream provider previously supplied categories and its category request fails, you’ll see **Refresh needed** and can keep browsing the saved groups. A successful refresh removes channels that are gone. Signing out, removing the profile, or revoked Jellyfin access clears the saved lineup.
 - **Channels load from scratch.** A new profile, an evicted cache, or a lineup too large to save requires a fresh download.
 - **The guide is empty.** Check that your provider has listings for the selected time. For Xtream and M3U, the channel's `epg_channel_id` or `tvg-id` must match the XMLTV channel ID. Listings load as you browse and stay in memory while the app runs.
 - **The stream stopped.** Use **Try again** in playback. For Jellyfin, hold **Select** on the channel and choose **Try a compatible stream** to request H.264/AAC conversion if your server permits it.

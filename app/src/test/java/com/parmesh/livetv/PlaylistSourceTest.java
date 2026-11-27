@@ -131,6 +131,14 @@ public class PlaylistSourceTest {
                                         "QA")
                                 .values());
         assertEquals(
+                List.of(
+                        List.of("HD", "XXX"),
+                        List.of("HD", "XXX"),
+                        List.of("General"),
+                        List.of(),
+                        List.of("Adult")),
+                entries.stream().map(PlaylistSource.Entry::categories).toList());
+        assertEquals(
                 List.of(true, true, false, false, true),
                 entries.stream().map(PlaylistSource.Entry::adult).toList());
     }
