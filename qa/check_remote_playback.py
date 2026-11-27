@@ -112,12 +112,16 @@ def screenshot():
     return width, height, memoryview(raw)[-width * height * 4 :]
 
 
-def pictures_visible(inset_aspect=16 / 9):
+def pictures_visible(inset_aspect=16 / 9, *, preview=None):
     # Resizing can temporarily precede the next GPU buffer. Require real pixels
     # within a bounded interval, rather than accepting only a player status.
     for attempt in range(6):
         try:
-            check_pictures(inset_aspect)
+            if preview is None:
+                check_pictures(inset_aspect)
+            else:
+                width, _, pixels = screenshot()
+                check_geometry(width, pixels, preview, 16 / 9)
             return
         except AssertionError:
             if attempt == 5:
@@ -183,9 +187,13 @@ def controls_hidden():
     raise AssertionError("Fullscreen controls did not hide after playback settled")
 
 
-def preview_letterbox():
+def preview_bounds():
     preview = next(n for n in nodes() if n.get("content-desc") == "Full screen")
-    left, top, right, bottom = map(int, re.findall(r"\d+", preview.get("bounds")))
+    return tuple(map(int, re.findall(r"\d+", preview.get("bounds"))))
+
+
+def preview_letterbox():
+    left, top, right, bottom = preview_bounds()
     bar = ((bottom - top) - (right - left) * 9 / 16) / 2
     assert bar > 8, "Fixture needs a letterboxed preview"
     width, _, pixels = screenshot()
@@ -193,6 +201,17 @@ def preview_letterbox():
         for x in range(left + (right - left) // 4, right - (right - left) // 4, 8):
             rgb = pixels[(y * width + x) * 4 : (y * width + x) * 4 + 3]
             assert max(rgb) < 45, "Preview letterbox contains colored or stale pixels"
+
+
+def preview_blank_during_tune():
+    left, top, right, bottom = preview_bounds()
+    width, _, pixels = screenshot()
+    for y in range(top + (bottom - top) // 2, bottom - 12, 8):
+        for x in range(left + (right - left) // 4, right - (right - left) // 4, 8):
+            rgb = pixels[(y * width + x) * 4 : (y * width + x) * 4 + 3]
+            assert max(rgb) < 45, (
+                "Outgoing picture is still visible during a channel change"
+            )
 
 
 request("/qa/guide_failure?enabled=1", {})
@@ -302,13 +321,33 @@ assert (
     in adb("shell", "dumpsys", "activity", "com.parmesh.livetv").decode()
 ), "Slow startup never reached playback"
 preview_letterbox()
-key(4)
-streams(0)
 request("/qa/slow_start?enabled=0", {})
 print(
     "PASS: slow startup finishes on the original session through Jellyfin HLS",
     flush=True,
 )
+request("/qa/open_delay?ms=8000", {})
+switch_opened = request("/qa/status")["opened"]
+try:
+    key(20)
+    focused("2  Blue Two")
+    key(23)
+    preview_blank_during_tune()
+    assert request("/qa/status")["opened"] == switch_opened, (
+        "Fixture did not delay the channel switch"
+    )
+finally:
+    request("/qa/open_delay?ms=0", {})
+streams(1)
+pictures_visible(preview=preview_bounds())
+key(4)
+streams(0)
+key(19)
+focused("1  Amber One")
+print(
+    "PASS: a channel switch clears the previous frame before the new tune", flush=True
+)
+
 request("/qa/open_delay?ms=8000", {})
 key(23)
 pending = nodes()

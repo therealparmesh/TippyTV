@@ -32,7 +32,7 @@ Run the unit tests and lint for both build types.
 ./gradlew :app:testDebugUnitTest :app:lintDebug :app:lintRelease
 ```
 
-For remote navigation, the guide, and playback recovery, use a dedicated Android emulator. The check replaces its TippyTV session and clears its saved lineup. Generate the local test streams and start the fixture server in one terminal.
+Use a dedicated Android emulator to check remote navigation, the guide, channel changes, picture-in-picture, and playback recovery. The check replaces its TippyTV session and clears its saved lineup. Generate the local test streams and start the fixture server in one terminal.
 
 ```sh
 qa/make-media.sh

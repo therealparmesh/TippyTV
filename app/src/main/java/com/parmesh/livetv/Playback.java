@@ -317,12 +317,9 @@ final class Playback {
         slot.status = Status.PREPARING;
         slot.statusSince = SystemClock.elapsedRealtime();
         changed.run();
-        MpvView surface = slot.surface;
-        surface.aspect(0);
-        surface.whenReady(() -> {
+        slot.surface.open(target -> {
             if (slot.generation != generation) return;
-            MpvView.Target target = surface.acquire();
-            if (target == null) return;
+            target.retain();
             slot.tuner.execute(() -> {
                 MpvPlayer opened;
                 try {
@@ -471,7 +468,7 @@ final class Playback {
         ui.removeCallbacks(slot.reconnect);
         if (slot.progressCheck != null) ui.removeCallbacks(slot.progressCheck);
         slot.progressCheck = null;
-        slot.surface.whenReady(null);
+        slot.surface.clear();
         MpvPlayer oldPlayer;
         synchronized (slot) {
             oldPlayer = slot.player;
