@@ -4,6 +4,10 @@ TippyTV is a live TV player for Amazon Fire TV and Android TV. Bring a Jellyfin 
 
 ## Quick start
 
+On Fire TV, search the Amazon Appstore for **TippyTV**. Open the app and choose a source on **Add a profile**.
+
+To install from GitHub on Fire TV or Android TV, follow the steps below. Use the same installation source for future updates.
+
 1. Download the signed APK from [GitHub Releases](https://github.com/therealparmesh/TippyTV/releases/latest). TippyTV supports ARMv7 and ARM64 devices running Android 6.0 or later.
 2. Connect to your TV with Android Debug Bridge (ADB), then install the APK. Replace the example path with the file you downloaded.
 
